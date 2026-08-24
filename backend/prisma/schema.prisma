@@ -1,0 +1,72 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Batch {
+  id               String           @id @default(uuid())
+  batchCode        String           @unique
+  rawDescription   String
+  productName      String
+  quantity         Int
+  priority         String           @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  overallStatus    String           @default("IN_PROGRESS") // PENDING, IN_PROGRESS, COMPLETED, CANCELLED
+  currentStage     String           @default("TAO_HINH_MOC")
+  deadlineDays     Int?
+  
+  // Technical specifications (Linh hoạt JSON lưu trữ mọi thông số kỹ thuật do AI bóc tách)
+  technicalSpecs   String           // JSON stringify for broad compatibility (SQLite/PostgreSQL)
+  
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  stages           BatchStageLog[]
+  incidents        IncidentReport[]
+
+  @@map("batches")
+}
+
+model BatchStageLog {
+  id           String      @id @default(uuid())
+  batchId      String
+  stageName    String      // TAO_HINH_MOC, PHOI_SUA_MOC, VE_HOA_TIET, TRANG_MEN, VAO_LO_NUNG, QC_DONG_GOI
+  status       String      @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, FAILED
+  startedAt    DateTime?
+  completedAt  DateTime?
+  notes        String?
+  stageData    String?     // JSON metadata
+
+  batch        Batch       @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@map("batch_stage_logs")
+}
+
+model IncidentReport {
+  id           String      @id @default(uuid())
+  batchId      String
+  stageName    String
+  defectCount  Int
+  reason       String
+  severity     String      @default("CRITICAL") // WARNING, CRITICAL
+  createdAt    DateTime    @default(now())
+
+  batch        Batch       @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@map("incident_reports")
+}
+
+model SystemEventLog {
+  id           String      @id @default(uuid())
+  eventType    String      // ORDER_CREATED, STAGE_ADVANCED, QC_ALERT, AI_PARSED
+  title        String
+  message      String
+  metadata     String?     // JSON payload
+  createdAt    DateTime    @default(now())
+
+  @@map("system_event_logs")
+}

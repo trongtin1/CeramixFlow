@@ -1,0 +1,142 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.telegramService = exports.TelegramService = void 0;
+const node_telegram_bot_api_1 = __importDefault(require("node-telegram-bot-api"));
+const prisma_1 = __importDefault(require("../config/prisma"));
+const batchSchema_1 = require("../schemas/batchSchema");
+class TelegramService {
+    bot = null;
+    chatId = null;
+    constructor() {
+        const token = process.env.TELEGRAM_BOT_TOKEN;
+        const chatId = process.env.TELEGRAM_CHAT_ID;
+        if (token && token.trim() !== '' && chatId && chatId.trim() !== '') {
+            try {
+                this.bot = new node_telegram_bot_api_1.default(token, { polling: false });
+                this.chatId = chatId;
+                console.log('[Telegram Service] Bot đã kết nối thành công với Chat ID:', chatId);
+            }
+            catch (err) {
+                console.error('[Telegram Service] Lỗi khởi tạo bot:', err.message);
+            }
+        }
+        else {
+            console.log('[Telegram Service] Chế độ Live Simulation (chưa cấu hình TELEGRAM_BOT_TOKEN / CHAT_ID). Log sẽ hiển thị trực tiếp trên Web Dashboard.');
+        }
+    }
+    /**
+     * Lưu log sự kiện vào DB để Frontend hiển thị Live Telegram Feed
+     */
+    async logEvent(eventType, title, message, metadata) {
+        try {
+            await prisma_1.default.systemEventLog.create({
+                data: {
+                    eventType,
+                    title,
+                    message,
+                    metadata: metadata ? JSON.stringify(metadata) : null,
+                },
+            });
+        }
+        catch (e) {
+            console.error('[Telegram Service] Error saving log:', e.message);
+        }
+    }
+    /**
+     * Gửi tin nhắn thực tế tới Telegram hoặc Mock
+     */
+    async dispatchMessage(htmlMessage) {
+        if (this.bot && this.chatId) {
+            try {
+                await this.bot.sendMessage(this.chatId, htmlMessage, { parse_mode: 'HTML' });
+                return true;
+            }
+            catch (err) {
+                console.error('[Telegram Service] Lỗi gửi tin nhắn Telegram:', err.message);
+                return false;
+            }
+        }
+        return true;
+    }
+    /**
+     * 1. Thông báo khi khởi tạo mẻ gốm mới
+     */
+    async notifyBatchCreated(batch) {
+        const specs = typeof batch.technicalSpecs === 'string' ? JSON.parse(batch.technicalSpecs) : batch.technicalSpecs;
+        const priorityEmoji = batch.priority === 'URGENT' ? '🔥 KHẨN CẤP' : batch.priority === 'HIGH' ? '⚡ CAO' : '📌 TIÊU CHUẨN';
+        const message = `
+🏺 <b>[XƯỞNG GỐM] KHỞI TẠO MẺ SẢN XUẤT MỚI #${batch.batchCode}</b>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📦 <b>Sản phẩm:</b> ${batch.productName}
+🔢 <b>Số lượng:</b> <b>${batch.quantity}</b> chiếc | Độ ưu tiên: <b>${priorityEmoji}</b>
+⏳ <b>Thời hạn dự kiến:</b> ${batch.deadlineDays ? `${batch.deadlineDays} ngày` : 'Chưa xác định'}
+
+📋 <b>THÔNG SỐ KỸ THUẬT (AI EXTRACTED):</b>
+• 🧱 <b>Ước tính đất sét:</b> <code>${specs?.estimated_clay_kg || 'N/A'} kg</code>
+• 🎨 <b>Loại men:</b> ${specs?.glaze_type || 'N/A'}
+• 🔥 <b>Nhiệt độ nung:</b> <code>${specs?.firing_specs?.target_temperature_c || 'N/A'}°C</code> (~${specs?.firing_specs?.estimated_duration_hours || '12'}h)
+• 📏 <b>Kích thước:</b> Cao ${specs?.dimensions?.height_cm || '30'}cm
+
+🚀 <i>Quy trình 6 công đoạn đã được kích hoạt tại trạm: <b>Tạo hình mộc</b></i>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+        await this.dispatchMessage(message);
+        await this.logEvent('ORDER_CREATED', `Khởi tạo mẻ #${batch.batchCode}`, message, { batchCode: batch.batchCode, productName: batch.productName });
+    }
+    /**
+     * 2. Thông báo khi mẻ gốm chuyển sang công đoạn mới
+     */
+    async notifyStageAdvanced(batch) {
+        const fromName = batchSchema_1.STAGE_DISPLAY_NAMES[batch.fromStage] || batch.fromStage;
+        const toName = batchSchema_1.STAGE_DISPLAY_NAMES[batch.toStage] || batch.toStage;
+        const specs = typeof batch.technicalSpecs === 'string' ? JSON.parse(batch.technicalSpecs || '{}') : batch.technicalSpecs;
+        let stageHighlight = '';
+        if (batch.toStage === 'VAO_LO_NUNG') {
+            stageHighlight = `\n🔥 <i>Chuẩn bị nung nhiệt độ đỉnh: <b>${specs?.firing_specs?.target_temperature_c || 1280}°C</b> trong lò khí gas</i>`;
+        }
+        else if (batch.toStage === 'TRANG_MEN') {
+            stageHighlight = `\n🎨 <i>Áp dụng lớp men: <b>${specs?.glaze_type || 'Men truyền thống'}</b></i>`;
+        }
+        const message = batch.isCompleted ? `
+🎉 <b>[HOÀN THÀNH TOÀN BỘ] MẺ GỐM #${batch.batchCode}</b>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🏺 <b>Sản phẩm:</b> ${batch.productName}
+✅ Đã vượt qua kiểm định chất lượng QC và đóng gói xuất xưởng thành công!
+⏰ <b>Thời điểm:</b> ${new Date().toLocaleString('vi-VN')}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━` : `
+🔄 <b>[CHUYỂN CÔNG ĐOẠN] MẺ GỐM #${batch.batchCode}</b>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🏺 <b>Sản phẩm:</b> ${batch.productName}
+📍 <b>Đã hoàn thành:</b> ✅ <i>${fromName}</i>
+👉 <b>Chuyển tiếp đến:</b> 🎯 <b>${toName}</b>${stageHighlight}
+⏰ <b>Thời gian cập nhật:</b> ${new Date().toLocaleString('vi-VN')}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+        await this.dispatchMessage(message);
+        await this.logEvent(batch.isCompleted ? 'BATCH_COMPLETED' : 'STAGE_ADVANCED', batch.isCompleted ? `Hoàn thành mẻ #${batch.batchCode}` : `Mẻ #${batch.batchCode} -> ${toName}`, message, { batchCode: batch.batchCode, toStage: batch.toStage });
+    }
+    /**
+     * 3. Bắn CẢNH BÁO ĐỎ khi có sự cố QC hoặc hỏng hóc khẩn cấp
+     */
+    async notifyQcIncident(incident) {
+        const stageName = batchSchema_1.STAGE_DISPLAY_NAMES[incident.stageName] || incident.stageName;
+        const message = `
+🚨 <b>[CẢNH BÁO ĐỎ SỰ CỐ QC KHẨN CẤP]</b> 🚨
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ <b>Mẻ sản xuất:</b> <code>#${incident.batchCode}</code> (${incident.productName})
+📍 <b>Phát hiện tại:</b> <b>${stageName}</b>
+💥 <b>Số lượng sản phẩm hỏng/lỗi:</b> <b>${incident.defectCount} chiếc</b>
+🔍 <b>Nguyên nhân ghi nhận:</b> <i>"${incident.reason}"</i>
+📊 <b>Mức độ nghiêm trọng:</b> 🔴 <b>${incident.severity.toUpperCase()}</b>
+
+👨‍🔧 <b>HÀNH ĐỘNG YÊU CẦU:</b>
+- Quản đốc xưởng và kỹ thuật viên kiểm tra ngay lập tức.
+- Tạm dừng mẻ nung/tráng men để đánh giá nguyên nhân rủi ro!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+        await this.dispatchMessage(message);
+        await this.logEvent('QC_ALERT', `🚨 Lỗi QC mẻ #${incident.batchCode}: ${incident.defectCount} sản phẩm`, message, { batchCode: incident.batchCode, defectCount: incident.defectCount, reason: incident.reason });
+    }
+}
+exports.TelegramService = TelegramService;
+exports.telegramService = new TelegramService();
