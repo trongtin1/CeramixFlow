@@ -8,22 +8,42 @@
 
 ## 📑 Mục Lục
 1. [Giới Thiệu Bài Toán & Mục Tiêu Nghiệp Vụ](#-giới-thiệu-bài-toán--mục-tiêu-nghiệp-vụ)
-2. [Công Nghệ Sử Dụng (Tech Stack)](#-công-nghệ-sử-dụng-tech-stack)
-3. [Sơ Đồ Kiến Trúc Hệ Thống (Architecture Blueprint)](#-sơ-đồ-kiến-trúc-hệ-thống)
-4. [Tư Duy Thiết Kế: Dữ Liệu Cố Định vs Dữ Liệu Linh Hoạt (Hybrid JSONB)](#-tư-duy-thiết-kế-dữ-liệu-cố-định-vs-dữ-liệu-linh-hoạt-hybrid-jsonb)
-5. [Các Tính Năng Cốt Lõi & Đột Phá (Core Features)](#-các-tính-năng-cốt-lõi--đột-phá)
-6. [Bộ Công Cụ Điều Phối Mật Độ Cao & Kéo Thả (High-Density Toolset & DnD)](#-bộ-công-cụ-điều-phối-mật-độ-cao--kéo-thả-kanban)
-7. [Trợ Lý AI RAG Chuyên Gia Xưởng Gốm (2-Tier Conversational Copilot)](#-trợ-lý-ai-rag-chuyên-gia-xưởng-gốm)
-8. [Hướng Dẫn Cài Đặt & Chạy Ứng Dụng (Quick Start)](#-hướng-dẫn-cài-đặt--chạy-ứng-dụng)
-9. [Kịch Bản Video Demo 2 - 3 Phút (Presentation Script)](#-kịch-bản-video-demo-2---3-phút)
-10. [Các Câu Hỏi Phỏng Vấn Kỹ Thuật (Q&A Checklist)](#-các-câu-hỏi-phỏng-vấn-kỹ-thuật)
+2. [Tài Liệu Nghiệp Vụ & Kiến Trúc Chi Tiết (Folder `document/`)](#-tài-liệu-nghiệp-vụ--kiến-trúc-chi-tiết)
+3. [Công Nghệ Sử Dụng (Tech Stack)](#-công-nghệ-sử-dụng-tech-stack)
+4. [Sơ Đồ Kiến Trúc Hệ Thống (Architecture Blueprint)](#-sơ-đồ-kiến-trúc-hệ-thống)
+5. [Tư Duy Thiết Kế: Dữ Liệu Cố Định vs Dữ Liệu Linh Hoạt (Hybrid JSONB)](#-tư-duy-thiết-kế-dữ-liệu-cố-định-vs-dữ-liệu-linh-hoạt-hybrid-jsonb)
+6. [Các Tính Năng Cốt Lõi & Đột Phá (Core Features)](#-các-tính-năng-cốt-lõi--đột-phá)
+7. [Bộ Công Cụ Điều Phối Mật Độ Cao & Kéo Thả (High-Density Toolset & DnD)](#-bộ-công-cụ-điều-phối-mật-độ-cao--kéo-thả-kanban)
+8. [Trợ Lý AI RAG Chuyên Gia Xưởng Gốm (2-Tier Conversational Copilot)](#-trợ-lý-ai-rag-chuyên-gia-xưởng-gốm)
+9. [Hướng Dẫn Cài Đặt & Chạy Ứng Dụng (Quick Start)](#-hướng-dẫn-cài-đặt--chạy-ứng-dụng)
+10. [Kịch Bản Video Demo 2 - 3 Phút (Presentation Script)](#-kịch-bản-video-demo-2---3-phút)
+11. [Các Câu Hỏi Phỏng Vấn Kỹ Thuật (Q&A Checklist)](#-các-câu-hỏi-phỏng-vấn-kỹ-thuật)
+
+---
+
+## 📚 Tài Liệu Nghiệp Vụ & Kiến Trúc Chi Tiết
+
+Hệ thống được tài liệu hóa bài bản chuẩn doanh nghiệp trong thư mục [`document/`](document/):
+
+| Tài Liệu | Tệp Đính Kèm | Nội Dung Trọng Tâm |
+| :--- | :--- | :--- |
+| **Phân Tích Nghiệp Vụ (BA)** | [`document/BUSINESS_ANALYSIS.md`](document/BUSINESS_ANALYSIS.md) | Bối cảnh doanh nghiệp, User Personas, BPMN Workflow, User Stories & Acceptance Criteria. |
+| **Kiến Trúc Cơ Sở Dữ Liệu (DB)** | [`document/DATABASE_ARCHITECTURE.md`](document/DATABASE_ARCHITECTURE.md) | Triết lý Hybrid JSONB, ERD Diagram, Data Dictionary 4 bảng, cấu trúc JSONB specs, Indexing. |
+| **Quy Trình & State Machine** | [`document/SYSTEM_FLOW_STATE_MACHINE.md`](document/SYSTEM_FLOW_STATE_MACHINE.md) | Máy trạng thái 6 trạm, Ma trận chuyển trạng thái, Thuật toán Multi-tier, Mẫu tin nhắn Telegram. |
+| **Đặc Tả Kỹ Thuật API** | [`Setup/docs/API_SPECS.md`](Setup/docs/API_SPECS.md) | Danh sách RESTful APIs, Request/Response payload chuẩn cho AI Parser, RAG Chat & CRUD. |
+| **Cấu Hình Môi Trường** | [`Setup/docs/ENVIRONMENT_GUIDE.md`](Setup/docs/ENVIRONMENT_GUIDE.md) | Hướng dẫn tạo Supabase DB, Gemini API Key và Telegram Bot từng bước. |
+
+---
 
 ---
 
 ## 🎯 Giới Thiệu Bài Toán & Mục Tiêu Nghiệp Vụ
 
 Trong các xưởng gia công & sản xuất gốm sứ truyền thống (như Bát Tràng, Chu Đậu, Hương Canh), quy trình sản xuất trải qua 6 công đoạn liên hoàn:
-$$\text{1. Tạo hình mộc} \longrightarrow \text{2. Phơi sấy \& Sửa} \longrightarrow \text{3. Vẽ họa tiết} \longrightarrow \text{4. Tráng men} \longrightarrow \text{5. Vào lò nung} \longrightarrow \text{6. QC \& Đóng gói}$$
+
+```
+🏺 1. Tạo hình mộc ➔ ☀️ 2. Phơi sấy & Sửa ➔ 🖌️ 3. Vẽ họa tiết ➔ 🎨 4. Tráng men ➔ 🔥 5. Vào lò nung ➔ 📦 6. QC & Đóng gói
+```
 
 ### Khó khăn thực tế & Giải pháp của CeramixFlow:
 - **Tính phi cấu trúc của thông số ngành gốm:** Mỗi dòng sản phẩm (men lam, men rạn, men ngọc Celadon, men da lươn...) có yêu cầu rất khác biệt về lượng đất sét, nhiệt độ lò nung (1050°C - 1300°C), thời gian giữ nhiệt đỉnh (Soaking), tỷ lệ co ngót nhiệt và phụ kiện (bọc đồng, dát vàng).
@@ -105,7 +125,12 @@ flowchart TD
    - 💬 **`🤖 Chat Tư Vấn Kỹ Sư AI (RAG)`**: Mở khung chat đối thoại với Kỹ sư trưởng AI để hỏi đáp và bổ sung các thông số kỹ thuật còn thiếu.
 2. **Thuật Toán Điều Phối Đa Tầng (Multi-Tier Scheduling Engine):**
    - Sắp xếp thứ tự ưu tiên xử lý trong từng trạm theo công thức 4 lớp:
-     $$\text{Cấp độ ưu tiên (URGENT > HIGH > MEDIUM > LOW)} \longrightarrow \text{Thứ tự kéo thả thủ công (custom\_rank)} \longrightarrow \text{Hạn giao sớm (EDD)} \longrightarrow \text{FIFO}$$
+   ```
+   1️⃣ Cấp độ ưu tiên (URGENT > HIGH > MEDIUM > LOW)
+      ➔ 2️⃣ Thứ tự kéo thả thủ công (custom_rank)
+         ➔ 3️⃣ Hạn giao sớm nhất (EDD - Earliest Due Date)
+            ➔ 4️⃣ Đến trước xử lý trước (FIFO)
+   ```
 3. **Kéo & Thả Thông Minh (HTML5 Drag-and-Drop):**
    - Kéo thẻ lên/xuống trong cùng cột để đổi vị trí ưu tiên `#1`, `#2`, `#3`...
    - Kéo thẻ sang cột tiếp theo để chuyển công đoạn sản xuất tức thì.
