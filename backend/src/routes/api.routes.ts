@@ -5,13 +5,16 @@ import { SystemController } from '../controllers/system.controller';
 
 const router = Router();
 
-// 1. AI Order Parser
+// 1. AI Order Parser & Interactive RAG Chat
 router.post('/orders/parse-ai', OrderController.parseOrderWithAi);
+router.post('/chat/assistant', OrderController.chatWithRagAssistant);
 
 // 2. Batches CRUD & Workflow
 router.post('/batches', OrderController.createBatch);
 router.get('/batches', OrderController.getAllBatches);
+router.post('/batches/reorder', OrderController.reorderBatches);
 router.get('/batches/:id', OrderController.getBatchById);
+router.put('/batches/:id', OrderController.updateBatch);
 
 // 3. Workflow State Transition & Incidents
 router.patch('/batches/:id/advance', WorkflowController.advanceStage);

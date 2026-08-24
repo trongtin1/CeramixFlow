@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ReportQcIncidentSchema = exports.CreateBatchRequestSchema = exports.CeramicOrderExtractionSchema = exports.TechnicalSpecsSchema = exports.STAGE_DISPLAY_NAMES = exports.STAGES = void 0;
+exports.UpdateBatchRequestSchema = exports.ReportQcIncidentSchema = exports.CreateBatchRequestSchema = exports.CeramicOrderExtractionSchema = exports.TechnicalSpecsSchema = exports.STAGE_DISPLAY_NAMES = exports.STAGES = void 0;
 const zod_1 = require("zod");
 exports.STAGES = [
     'TAO_HINH_MOC',
@@ -60,4 +60,12 @@ exports.ReportQcIncidentSchema = zod_1.z.object({
     defect_count: zod_1.z.number().int().positive().describe('Số lượng sản phẩm bị lỗi'),
     reason: zod_1.z.string().min(3).describe('Nguyên nhân lỗi (ví dụ: Nứt men, rạn xương gốm, méo form do nhiệt...)'),
     severity: zod_1.z.enum(['WARNING', 'CRITICAL']).default('CRITICAL'),
+});
+// Update Batch API Request Schema
+exports.UpdateBatchRequestSchema = zod_1.z.object({
+    product_name: zod_1.z.string().min(1).optional(),
+    quantity: zod_1.z.number().int().positive().optional(),
+    priority: zod_1.z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
+    deadline_days: zod_1.z.number().int().positive().nullable().optional(),
+    technical_specs: exports.TechnicalSpecsSchema.optional(),
 });

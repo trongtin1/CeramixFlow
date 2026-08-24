@@ -31,6 +31,30 @@ class OrderController {
         }
     }
     /**
+     * API: POST /api/chat/assistant
+     * Hội thoại đa bước RAG: Phân tích độ đầy đủ thông số & đặt câu hỏi tương tác nếu còn thiếu
+     */
+    static async chatWithRagAssistant(req, res) {
+        try {
+            const { messages } = req.body;
+            if (!Array.isArray(messages) || messages.length === 0) {
+                return res.status(400).json({ success: false, message: 'Danh sách tin nhắn không hợp lệ.' });
+            }
+            const result = await ai_service_1.aiService.chatWithRagAssistant(messages);
+            return res.status(200).json({
+                success: true,
+                data: result,
+            });
+        }
+        catch (err) {
+            console.error('[OrderController] Error chatting with RAG assistant:', err);
+            return res.status(500).json({
+                success: false,
+                message: err.message || 'Lỗi hội thoại cùng Trợ lý AI.',
+            });
+        }
+    }
+    /**
      * API: POST /api/batches
      * Khởi tạo mẻ sản xuất mới
      */
@@ -93,6 +117,50 @@ class OrderController {
         }
         catch (err) {
             console.error('[OrderController] Error fetching batch by id:', err);
+            return res.status(500).json({ success: false, message: err.message });
+        }
+    }
+    /**
+     * API: PUT /api/batches/:id
+     * Cập nhật thông tin mẻ sản xuất, thay đổi độ ưu tiên & thông số kỹ thuật
+     */
+    static async updateBatch(req, res) {
+        try {
+            const { id } = req.params;
+            const updatedBatch = await workflow_service_1.workflowService.updateBatch(id, req.body);
+            return res.status(200).json({
+                success: true,
+                data: updatedBatch,
+                message: 'Cập nhật thông tin mẻ gốm thành công!',
+            });
+        }
+        catch (err) {
+            console.error('[OrderController] Error updating batch:', err);
+            return res.status(500).json({
+                success: false,
+                message: err.message || 'Lỗi cập nhật mẻ gốm.',
+            });
+        }
+    }
+    /**
+     * API: POST /api/batches/reorder
+     * Lưu lại thứ tự ưu tiên kéo thả của mẻ gốm
+     */
+    static async reorderBatches(req, res) {
+        try {
+            const { orderedIds } = req.body;
+            if (!Array.isArray(orderedIds)) {
+                return res.status(400).json({ success: false, message: 'orderedIds phải là một danh sách ID.' });
+            }
+            const updatedBatches = await workflow_service_1.workflowService.reorderBatches(orderedIds);
+            return res.status(200).json({
+                success: true,
+                data: updatedBatches,
+                message: 'Đã cập nhật thứ tự ưu tiên kéo thả thành công!',
+            });
+        }
+        catch (err) {
+            console.error('[OrderController] Error reordering batches:', err);
             return res.status(500).json({ success: false, message: err.message });
         }
     }

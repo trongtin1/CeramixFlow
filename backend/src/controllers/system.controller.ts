@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { workflowService } from '../services/workflow.service';
 import prisma from '../config/prisma';
+import { seedDatabase } from '../services/seed.service';
 
 export class SystemController {
   /**
@@ -22,18 +23,15 @@ export class SystemController {
 
   /**
    * API: POST /api/system/reset-demo
-   * Reset lại dữ liệu demo để dễ dàng trình diễn
+   * Reset lại dữ liệu demo & nạp 9 mẻ gốm mẫu đa dạng độ ưu tiên
    */
   static async resetDemoData(req: Request, res: Response) {
     try {
-      await prisma.incidentReport.deleteMany({});
-      await prisma.batchStageLog.deleteMany({});
-      await prisma.batch.deleteMany({});
-      await prisma.systemEventLog.deleteMany({});
+      await seedDatabase();
 
       return res.status(200).json({
         success: true,
-        message: 'Đã làm sạch dữ liệu để bắt đầu phiên kiểm thử mới!',
+        message: 'Đã nạp thành công 9 mẻ gốm mẫu đa dạng độ ưu tiên & thời hạn!',
       });
     } catch (err: any) {
       console.error('[SystemController] Error resetting demo data:', err);

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Bot, Database, Send, RefreshCw, Layers } from 'lucide-react';
+import { Sparkles, Database, Send, Layers, RefreshCw } from 'lucide-react';
 import { DashboardStats } from '../types';
 
 interface HeaderProps {
@@ -8,23 +8,27 @@ interface HeaderProps {
   isResetting: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ stats, onResetDemo, isResetting }) => {
+export const Header: React.FC<HeaderProps> = ({
+  stats,
+  onResetDemo,
+  isResetting,
+}) => {
   return (
-    <header className="glass-panel" style={{ padding: '18px 24px', marginBottom: '24px' }}>
+    <header className="glass-panel" style={{ padding: '16px 24px', marginBottom: '20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
         
         {/* Brand & Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <div
             style={{
-              width: '46px',
-              height: '46px',
+              width: '44px',
+              height: '44px',
               borderRadius: '12px',
               background: 'linear-gradient(135deg, #1d4ed8 0%, #ea580c 100%)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '24px',
+              fontSize: '22px',
               boxShadow: '0 8px 16px rgba(29, 78, 216, 0.35)',
             }}
           >
@@ -32,19 +36,19 @@ export const Header: React.FC<HeaderProps> = ({ stats, onResetDemo, isResetting 
           </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <h1 style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '-0.02em' }}>
+              <h1 style={{ fontSize: '19px', fontWeight: 800, letterSpacing: '-0.02em' }}>
                 CERAMIX<span style={{ color: '#ea580c' }}>FLOW</span>
               </h1>
               <span className="badge badge-medium" style={{ fontSize: '10px' }}>AI MES v2.0</span>
             </div>
-            <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
               Hệ Thống Điều Phối & Giám Sát Quy Trình Sản Xuất Xưởng Gốm Đa Bước
             </p>
           </div>
         </div>
 
         {/* Live Counters */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3b82f6', boxShadow: '0 0 8px #3b82f6' }} />
             <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Tổng mẻ:</span>
@@ -63,31 +67,34 @@ export const Header: React.FC<HeaderProps> = ({ stats, onResetDemo, isResetting 
             <strong className="font-mono" style={{ fontSize: '14px', color: '#ef4444' }}>{stats.totalIncidents}</strong>
           </div>
 
-          <div style={{ height: '24px', width: '1px', background: 'var(--border-glass)' }} />
+          <div style={{ height: '20px', width: '1px', background: 'var(--border-glass)' }} />
 
           {/* Status Badges */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span className="badge badge-success" title="Hybrid Relational + JSONB">
-              <Database size={12} /> Hybrid DB
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span className="badge badge-success" title="PostgreSQL Hybrid Relational + JSONB">
+              <Database size={11} /> Hybrid DB
             </span>
-            <span className="badge badge-medium" title="Google Gemini / Intelligent Heuristic">
-              <Sparkles size={12} /> AI Parser
+            <span className="badge badge-medium" title="Google Gemini 2.5 Flash">
+              <Sparkles size={11} /> Gemini AI
             </span>
-            <span className="badge badge-high" title="Telegram Automation">
-              <Send size={12} /> Telegram
+            <span className="badge badge-high" title="Telegram Bot Automation">
+              <Send size={11} /> Telegram
             </span>
           </div>
 
-          {/* Reset Demo Button */}
+          <div style={{ height: '20px', width: '1px', background: 'var(--border-glass)' }} />
+
+          {/* Single Action: Reset Demo */}
           <button
+            type="button"
             className="btn btn-ghost"
             onClick={onResetDemo}
             disabled={isResetting}
-            style={{ padding: '7px 12px', fontSize: '12px' }}
-            title="Làm mới dữ liệu về trạng thái ban đầu"
+            style={{ padding: '6px 12px', fontSize: '11.5px', borderRadius: '8px' }}
+            title="Nạp lại dữ liệu 9 mẻ gốm mẫu ban đầu"
           >
-            <RefreshCw size={13} className={isResetting ? 'spin' : ''} />
-            {isResetting ? 'Đang reset...' : 'Reset Demo'}
+            <RefreshCw size={12} className={isResetting ? 'spin' : ''} />
+            {isResetting ? 'Đang reset...' : 'Nạp Mẻ Mẫu (Demo)'}
           </button>
         </div>
 

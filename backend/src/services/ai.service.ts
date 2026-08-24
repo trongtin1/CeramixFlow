@@ -39,13 +39,8 @@ export class AiService {
   private async callGeminiLlm(rawText: string): Promise<CeramicOrderExtraction | null> {
     if (!this.genAI) return null;
 
-    const model = this.genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.2,
-      },
-    });
+    const preferredModel = process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash';
+    const candidateModels = Array.from(new Set([preferredModel, 'gemini-2.5-flash', 'gemini-3.6-flash', 'gemini-1.5-flash', 'gemini-pro']));
 
     const systemPrompt = `
 Bạn là AI Agent Chuyên gia Kỹ thuật và Điều phối Sản xuất Gốm Sứ Bát Tràng / Chu Đậu.
@@ -76,14 +71,30 @@ Quy tắc nghiệp vụ & ước tính kỹ thuật:
 Hãy trả về DUY NHẤT một JSON hợp lệ tuân thủ chính xác Schema. Không kèm bất kỳ văn bản giải thích nào ngoài JSON.
 `;
 
-    const result = await model.generateContent([
-      { text: systemPrompt },
-      { text: `Văn bản đơn hàng: "${rawText}"` },
-    ]);
+    for (const modelName of candidateModels) {
+      try {
+        const model = this.genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.2,
+          },
+        });
 
-    const rawJson = result.response.text();
-    const parsed = JSON.parse(rawJson);
-    return CeramicOrderExtractionSchema.parse(parsed);
+        const result = await model.generateContent([
+          { text: systemPrompt },
+          { text: `Văn bản đơn hàng: "${rawText}"` },
+        ]);
+
+        const rawJson = result.response.text();
+        const parsed = JSON.parse(rawJson);
+        return CeramicOrderExtractionSchema.parse(parsed);
+      } catch (err: any) {
+        console.warn(`[AI Service] Model '${modelName}' không khả dụng (${err.message}). Đang thử model tiếp theo...`);
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -197,6 +208,233 @@ Hãy trả về DUY NHẤT một JSON hợp lệ tuân thủ chính xác Schema.
     };
 
     return CeramicOrderExtractionSchema.parse(resultPayload);
+  }
+
+  /**
+   * RAG Conversational Copilot: Tiếp nhận mô tả, phân tích độ đầy đủ thông số & đặt câu hỏi tương tác nếu còn thiếu
+   */
+  async chatWithRagAssistant(messages: { role: 'user' | 'assistant' | 'system'; content: string }[]): Promise<{
+    reply: string;
+    is_complete: boolean;
+    missing_fields: string[];
+    suggested_options?: string[];
+    extracted_specs: CeramicOrderExtraction | null;
+  }> {
+    if (!messages || messages.length === 0) {
+      throw new Error('Danh sách tin nhắn không được để trống.');
+    }
+
+    const conversationHistory = messages
+      .map((m) => `${m.role === 'user' ? 'Khách hàng / Quản đốc' : 'Trợ lý AI'}: ${m.content}`)
+      .join('\n');
+
+    // 1. Thử gọi Gemini AI
+    if (this.genAI) {
+      const preferredModel = process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash';
+      const candidateModels = Array.from(
+        new Set([preferredModel, 'gemini-2.5-flash', 'gemini-3.6-flash', 'gemini-1.5-flash', 'gemini-pro'])
+      );
+
+      const ragPrompt = `
+Bạn là "Trợ Lý Kỹ Sư Trưởng Xưởng Gốm Sứ Bát Tràng (CeramixFlow RAG Copilot)".
+Bạn có kiến thức chuyên sâu về công nghệ sản xuất gốm sứ thủ công Bát Tràng:
+- Đất sét: Đất sét trắng Kaolin dẻo, đất sét đỏ gốm mộc, đất tử sa.
+- Định mức đất: Ly/Cốc (0.25-0.35kg), Ấm chén (1.0-1.5kg/bộ), Bình cao 25-35cm (1.0-1.8kg), Bình lớn 40-60cm (2.5-5kg), Chum vại (5-15kg).
+- Men gốm & Nhiệt độ:
+  + Men lam cổ truyền: nung oxy hóa 1260 - 1280°C
+  + Men rạn cổ: nung 1200 - 1220°C (làm nguội tạo rạn, đánh mực tàu)
+  + Men ngọc Celadon / Hỏa biến: nung khử môi trường 1260 - 1300°C
+  + Men da lươn / men tro: nung 1220 - 1250°C
+  + Men hoàng gia / vàng: 1200 - 1260°C
+- Các thông số kỹ thuật chuyên sâu ngành gốm:
+  + Kỹ thuật viền miệng / phụ kiện: Bọc đồng thủ công, dát vàng kim 24K, quai mây truyền thống...
+  + Thông số phôi mộc: Tỷ lệ co ngót nhiệt (10% - 14%), Độ ẩm phôi mộc (14% - 18%), Thời gian ủ men (24h - 48h), Độ dày thành gốm (3mm - 12mm)...
+  + Chế độ lò nung nâng cao: Thời gian giữ nhiệt đỉnh (Soaking: 60 - 180 phút), Áp suất buồng lò, Môi trường nung khử sâu/oxy hóa.
+
+LỊCH SỬ HỘI THOẠI ĐẾN HIỆN TẠI:
+${conversationHistory}
+
+QUY TRÌNH HỘI THOẠI 2 TẦNG (BẮT BUỘC TUÂN THỦ):
+
+🔷 TẦNG 1: KIỂM TRA 5 THÔNG TIN ĐƠN HÀNG CƠ BẢN:
+1. Tên dòng sản phẩm & chủng loại
+2. Số lượng sản phẩm
+3. Chiều cao / Kích thước (cm)
+4. Loại men gốm mong muốn
+5. Thời hạn hoàn thành / giao hàng (ngày)
+=> NẾU THIẾU BẤT KỲ THÔNG TIN NÀO TRONG 5 MỤC TRÊN:
+   - 'is_complete': false
+   - Hỏi trọng tâm các thông tin cơ bản còn thiếu.
+   - 'missing_fields': Danh sách các mục còn thiếu.
+   - 'suggested_options': 3-4 lựa chọn nhanh (ví dụ: ["Cao 35cm", "Men lam Bát Tràng", "Hoàn thành trong 7 ngày"]).
+
+🔶 TẦNG 2: HỎI THÊM CÁC THÔNG SỐ KỸ THUẬT CHUYÊN SÂU (SAU KHI ĐÃ XONG CƠ BẢN):
+Nếu đã có đủ 5 thông tin cơ bản ở trên NHƯNG người dùng CHƯA được hỏi hoặc chưa thảo luận về các **Thông Số Kỹ Thuật Bổ Sung**:
+=> KHÔNG ĐƯỢC KẾT THÚC NGAY! ĐẶT 'is_complete': false.
+=> Trong 'reply': Xác nhận các thông số cơ bản đã có, sau đó hỏi thăm dò chuyên gia về các thông số kỹ thuật chuyên sâu:
+   - "Đã ghi nhận các thông số cơ bản của đơn hàng. Để xưởng gốm thiết lập công thức và quy trình nung chính xác nhất, bạn có yêu cầu gì về các **Thông Số Kỹ Thuật Chuyên Sâu** dưới đây không?"
+     1. Kỹ thuật hoàn thiện viền miệng / Họa tiết (Bọc đồng, Dát vàng 24K, Men rạn đánh mực...)?
+     2. Đặc tính phôi mộc & vật liệu (Tỷ lệ co ngót nhiệt, Độ ẩm mộc, Độ dày thành gốm...)?
+     3. Chế độ lò nung nâng cao (Thời gian giữ nhiệt đỉnh Soaking, Nung khử khí gas...)?
+=> 'missing_fields': ["Thông số kỹ thuật chuyên sâu (Tùy chọn)"]
+=> 'suggested_options': [
+     "Bọc đồng viền miệng thủ công",
+     "Tỷ lệ co ngót nhiệt 12.5%",
+     "Giữ nhiệt đỉnh lò (Soaking) 120 phút",
+     "Áp dụng thông số kỹ thuật tiêu chuẩn của xưởng"
+   ]
+
+🔷 TẦNG 3: HOÀN THIỆN & ĐÓNG GÓI JSON (KHI NGƯỜI DÙNG ĐÃ CHỌN THÔNG SỐ HOẶC CHỌN 'TIÊU CHUẨN'):
+Khi người dùng đã bổ sung thông số kỹ thuật hoặc nhắn 'Áp dụng thông số tiêu chuẩn' / 'Không cần thêm' / 'Dùng mặc định':
+=> ĐẶT 'is_complete': true.
+=> Viết 'reply' tổng kết trọn vẹn toàn bộ kế hoạch sản xuất và thông số kỹ thuật.
+=> Đóng gói 'extracted_specs' đầy đủ có:
+   {
+     "product_name": string,
+     "quantity": number,
+     "priority": "LOW" | "MEDIUM" | "HIGH" | "URGENT",
+     "deadline_days": number,
+     "technical_specs": {
+       "dimensions": { "height_cm": number, "diameter_cm": number },
+       "estimated_clay_kg": number,
+       "glaze_type": string,
+       "firing_specs": { "target_temperature_c": number, "estimated_duration_hours": number, "firing_curve": string },
+       "craft_technique": string,
+       "artwork_details": string,
+       "custom_attributes": {
+         // Chứa các thông số kỹ thuật bổ sung (ví dụ: "Tỷ lệ co ngót nhiệt": "12.5%", "Kỹ thuật viền miệng": "Bọc đồng thủ công"...)
+       }
+     },
+     "ai_reasoning": string
+   }
+
+BẮT BUỘC TRẢ VỀ DUY NHẤT 1 ĐỐI TƯỢNG JSON:
+{
+  "reply": "Nội dung phản hồi...",
+  "is_complete": true hoặc false,
+  "missing_fields": ["..."],
+  "suggested_options": ["..."],
+  "extracted_specs": { ... } hoặc null
+}
+`;
+
+      for (const modelName of candidateModels) {
+        try {
+          const model = this.genAI.getGenerativeModel({
+            model: modelName,
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0.2,
+            },
+          });
+
+          const result = await model.generateContent(ragPrompt);
+          const responseText = result.response.text();
+          if (responseText) {
+            const parsed = JSON.parse(responseText);
+            return {
+              reply: parsed.reply || 'Chào bạn, tôi đã tiếp nhận yêu cầu.',
+              is_complete: Boolean(parsed.is_complete),
+              missing_fields: Array.isArray(parsed.missing_fields) ? parsed.missing_fields : [],
+              suggested_options: Array.isArray(parsed.suggested_options) ? parsed.suggested_options : [],
+              extracted_specs: parsed.extracted_specs ? parsed.extracted_specs : null,
+            };
+          }
+        } catch (e: any) {
+          console.warn(`[AI RAG Chat] Thử model ${modelName} thất bại: ${e.message}`);
+        }
+      }
+    }
+
+    // 2. Fallback Heuristic RAG Assistant (2-Stage Prompting)
+    const fullText = messages.map((m) => m.content).join(' ');
+    const lowerFull = fullText.toLowerCase();
+
+    const hasQty = /\d+\s*(?:chiếc|bộ|cái|ly|bình|chum|đĩa)/i.test(fullText) || /\b\d+\b/.test(fullText);
+    const hasHeight = /\d+\s*(?:cm|centimet|mét|m)/i.test(fullText) || /cao\s*\d+/i.test(fullText);
+    const hasGlaze = /(?:men lam|men rạn|men ngọc|celadon|men da lươn|men tro|men hoàng|men hỏa biến)/i.test(fullText);
+    const hasDeadline = /\d+\s*(?:ngày|tuần|tháng|hạn)/i.test(fullText);
+
+    // Tầng 1: Thiếu thông tin cơ bản
+    const missingBasic: string[] = [];
+    if (!hasQty) missingBasic.push('Số lượng cần sản xuất');
+    if (!hasHeight) missingBasic.push('Chiều cao / Kích thước (cm)');
+    if (!hasGlaze) missingBasic.push('Loại men gốm mong muốn');
+    if (!hasDeadline) missingBasic.push('Thời hạn hoàn thành (ngày)');
+
+    if (missingBasic.length > 0) {
+      const suggestions: string[] = [];
+      if (!hasHeight) suggestions.push('Chiều cao 35cm');
+      if (!hasGlaze) suggestions.push('Men lam Bát Tràng');
+      if (!hasDeadline) suggestions.push('Hoàn thành trong 7 ngày');
+      if (!hasQty) suggestions.push('Số lượng 100 chiếc');
+
+      return {
+        reply: `Chào Quản đốc! Tôi đã tiếp nhận thông tin sơ bộ. Để xưởng có thể thiết lập lệnh sản xuất, bạn vui lòng cung cấp thêm các thông tin cơ bản sau:\n\n${missingBasic.map((m, i) => `${i + 1}. **${m}**?`).join('\n')}`,
+        is_complete: false,
+        missing_fields: missingBasic,
+        suggested_options: suggestions,
+        extracted_specs: null,
+      };
+    }
+
+    // Tầng 2: Đã có thông tin cơ bản -> Hỏi thêm Thông Số Kỹ Thuật Nâng Cao
+    const hasAdvancedSpecs =
+      lowerFull.includes('co ngót') ||
+      lowerFull.includes('bọc đồng') ||
+      lowerFull.includes('soaking') ||
+      lowerFull.includes('tiêu chuẩn') ||
+      lowerFull.includes('mặc định') ||
+      lowerFull.includes('độ ẩm') ||
+      lowerFull.includes('dát vàng') ||
+      lowerFull.includes('không cần') ||
+      lowerFull.includes('áp dụng');
+
+    if (!hasAdvancedSpecs) {
+      return {
+        reply: `Tuyệt vời! Tôi đã ghi nhận đầy đủ 5 thông số cơ bản. Để đảm bảo mẻ gốm đạt độ bền hoàn hảo và tối ưu chất lượng mộc khi nung, bạn có yêu cầu bổ sung thêm về các **Thông Số Kỹ Thuật Chuyên Sâu** dưới đây không?\n\n1. **Kỹ thuật viền miệng / Chế tác:** Bọc đồng thủ công, Dát vàng kim 24K?\n2. **Thông số phôi mộc:** Tỷ lệ co ngót nhiệt (10-14%), Độ ẩm phôi mộc?\n3. **Chế độ nung lò:** Thời gian giữ nhiệt đỉnh (Soaking) 60-180 phút?\n\n*(Nếu không có yêu cầu đặc biệt, bạn có thể chọn "Áp dụng thông số kỹ thuật tiêu chuẩn của xưởng")*`,
+        is_complete: false,
+        missing_fields: ['Thông số kỹ thuật chuyên sâu (Tùy chọn)'],
+        suggested_options: [
+          'Bọc đồng viền miệng thủ công',
+          'Tỷ lệ co ngót nhiệt 12.5%',
+          'Giữ nhiệt đỉnh lò (Soaking) 120 phút',
+          'Áp dụng thông số kỹ thuật tiêu chuẩn của xưởng',
+        ],
+        extracted_specs: null,
+      };
+    }
+
+    // Tầng 3: Đã đủ cả 2 tầng -> Đóng gói JSON
+    const extracted = this.heuristicFallbackParser(fullText);
+
+    // Bổ sung custom specs nếu có nhắc đến
+    if (lowerFull.includes('bọc đồng')) {
+      extracted.technical_specs.custom_attributes = {
+        ...(extracted.technical_specs.custom_attributes || {}),
+        'Kỹ thuật viền miệng': 'Bọc đồng thủ công chữ Vạn',
+      };
+    }
+    if (lowerFull.includes('co ngót')) {
+      extracted.technical_specs.custom_attributes = {
+        ...(extracted.technical_specs.custom_attributes || {}),
+        'Tỷ lệ co ngót nhiệt': '12.5%',
+      };
+    }
+    if (lowerFull.includes('soaking') || lowerFull.includes('giữ nhiệt')) {
+      extracted.technical_specs.custom_attributes = {
+        ...(extracted.technical_specs.custom_attributes || {}),
+        'Thời gian giữ nhiệt đỉnh (Soaking)': '120 phút',
+      };
+    }
+
+    return {
+      reply: `Hoàn tất! Tôi đã tổng hợp toàn diện kế hoạch sản xuất cho mẻ **${extracted.product_name}** (${extracted.quantity} chiếc). Đã tự động ước tính **${extracted.technical_specs.estimated_clay_kg}kg đất sét**, nhiệt độ lò **${extracted.technical_specs.firing_specs.target_temperature_c}°C** (${extracted.technical_specs.firing_specs.estimated_duration_hours} giờ nung) và tích hợp các thông số kỹ thuật chuyên sâu vào cấu trúc JSONB. Bạn có thể bấm nút bên dưới để kích hoạt ngay vào bảng điều phối!`,
+      is_complete: true,
+      missing_fields: [],
+      suggested_options: [],
+      extracted_specs: extracted,
+    };
   }
 }
 

@@ -74,3 +74,15 @@ export const ReportQcIncidentSchema = z.object({
 });
 
 export type ReportQcIncidentRequest = z.infer<typeof ReportQcIncidentSchema>;
+
+// Update Batch API Request Schema
+export const UpdateBatchRequestSchema = z.object({
+  product_name: z.string().min(1).optional(),
+  quantity: z.number().int().positive().optional(),
+  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
+  deadline_days: z.number().int().positive().nullable().optional(),
+  technical_specs: TechnicalSpecsSchema.optional(),
+});
+
+export type UpdateBatchRequest = z.infer<typeof UpdateBatchRequestSchema>;
+

@@ -1,5 +1,15 @@
-import React, { useState } from 'react';
-import { Sparkles, CheckCircle2, X, AlertTriangle, Layers, Flame, Gauge, FileCode, Check } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  Sparkles,
+  X,
+  Layers,
+  FileCode,
+  Check,
+  Plus,
+  Trash2,
+  Tag,
+  Sliders,
+} from 'lucide-react';
 import { AiParsedOrder, Priority } from '../types';
 
 interface AiReviewModalProps {
@@ -18,6 +28,22 @@ interface AiReviewModalProps {
   isCreating: boolean;
 }
 
+interface SpecRowItem {
+  id: string;
+  key: string;
+  value: string;
+}
+
+const COMMON_CUSTOM_PRESETS = [
+  { key: 'Tỷ lệ co ngót nhiệt', value: '12.5%' },
+  { key: 'Độ ẩm phôi mộc', value: '16%' },
+  { key: 'Thời gian ủ men', value: '24 giờ' },
+  { key: 'Độ dày thành gốm', value: '4.5 mm' },
+  { key: 'Kỹ thuật viền miệng', value: 'Bọc đồng thủ công' },
+  { key: 'Thời gian giữ nhiệt đỉnh (Soaking)', value: '150 phút' },
+  { key: 'Áp suất buồng lò nung', value: '0.05 MPa (Áp suất dương)' },
+];
+
 export const AiReviewModal: React.FC<AiReviewModalProps> = ({
   parsedData,
   rawText,
@@ -33,14 +59,93 @@ export const AiReviewModal: React.FC<AiReviewModalProps> = ({
   const [priority, setPriority] = useState<Priority>(parsedData.priority);
   const [deadlineDays, setDeadlineDays] = useState<number | null>(parsedData.deadline_days);
 
-  // Technical specs
-  const [clayKg, setClayKg] = useState(parsedData.technical_specs.estimated_clay_kg);
-  const [glazeType, setGlazeType] = useState(parsedData.technical_specs.glaze_type);
-  const [tempC, setTempC] = useState(parsedData.technical_specs.firing_specs.target_temperature_c);
-  const [durationHours, setDurationHours] = useState(parsedData.technical_specs.firing_specs.estimated_duration_hours);
-  const [heightCm, setHeightCm] = useState(parsedData.technical_specs.dimensions?.height_cm || 30);
+  // Dynamic Technical Specifications List (Toàn bộ lưu JSONB dạng Key-Value)
+  const [specsList, setSpecsList] = useState<SpecRowItem[]>(() => {
+    const raw = parsedData.technical_specs || {};
+    const items: SpecRowItem[] = [
+      { id: '1', key: 'Đất sét dự tính (kg)', value: String(raw.estimated_clay_kg || 100) },
+      { id: '2', key: 'Nhiệt độ nung lò (°C)', value: String(raw.firing_specs?.target_temperature_c || 1280) },
+      { id: '3', key: 'Thời gian nung (giờ)', value: String(raw.firing_specs?.estimated_duration_hours || 12) },
+      { id: '4', key: 'Loại men sử dụng', value: raw.glaze_type || 'Men lam cổ truyền' },
+      { id: '5', key: 'Chiều cao (cm)', value: String(raw.dimensions?.height_cm || 35) },
+      { id: '6', key: 'Kỹ thuật chế tác', value: raw.craft_technique || 'Vuốt tay bàn xoay & tiện mộc' },
+      { id: '7', key: 'Chi tiết hoa văn', value: raw.artwork_details || 'Họa tiết thủ công Bát Tràng' },
+    ];
+
+    // Thêm các thuộc tính tùy biến đã có nếu có
+    if (raw.custom_attributes) {
+      Object.entries(raw.custom_attributes).forEach(([k, v], idx) => {
+        items.push({ id: `c_${idx}`, key: k, value: String(v) });
+      });
+    }
+
+    return items;
+  });
 
   const [showJson, setShowJson] = useState(false);
+
+  // Thêm một dòng thông số kỹ thuật mới
+  const handleAddSpecRow = (key = '', value = '') => {
+    setSpecsList((prev) => [
+      ...prev,
+      { id: Date.now().toString() + Math.random().toString(36).substring(2, 5), key, value },
+    ]);
+  };
+
+  // Xóa một dòng thông số
+  const handleRemoveSpecRow = (id: string) => {
+    setSpecsList((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  // Cập nhật giá trị một dòng
+  const handleUpdateSpecRow = (id: string, field: 'key' | 'value', val: string) => {
+    setSpecsList((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, [field]: val } : item))
+    );
+  };
+
+  // Biên dịch danh sách key-value thành JSONB chuẩn
+  const getCompiledJsonb = () => {
+    const compiled: Record<string, any> = {
+      ...parsedData.technical_specs,
+      dimensions: { ...(parsedData.technical_specs?.dimensions || {}) },
+      firing_specs: { ...(parsedData.technical_specs?.firing_specs || {}) },
+      custom_attributes: {},
+    };
+
+    specsList.forEach((row) => {
+      const k = row.key.trim();
+      const v = row.value.trim();
+      if (!k) return;
+
+      const lowerK = k.toLowerCase();
+      if (lowerK.includes('đất sét') || lowerK.includes('clay')) {
+        const num = parseFloat(v);
+        compiled.estimated_clay_kg = !isNaN(num) ? num : v;
+      } else if (lowerK.includes('nhiệt độ') || lowerK.includes('temp')) {
+        const num = parseFloat(v);
+        compiled.firing_specs.target_temperature_c = !isNaN(num) ? num : v;
+      } else if (lowerK.includes('thời gian nung') || lowerK.includes('duration')) {
+        const num = parseFloat(v);
+        compiled.firing_specs.estimated_duration_hours = !isNaN(num) ? num : v;
+      } else if (lowerK.includes('loại men') || lowerK.includes('glaze')) {
+        compiled.glaze_type = v;
+      } else if (lowerK.includes('chiều cao') || lowerK.includes('height')) {
+        const num = parseFloat(v);
+        compiled.dimensions.height_cm = !isNaN(num) ? num : v;
+      } else if (lowerK.includes('kỹ thuật chế tác') || lowerK.includes('technique')) {
+        compiled.craft_technique = v;
+      } else if (lowerK.includes('hoa văn') || lowerK.includes('artwork')) {
+        compiled.artwork_details = v;
+      } else {
+        // Thuộc tính tùy biến linh hoạt
+        compiled.custom_attributes[k] = v;
+        compiled[k] = v;
+      }
+    });
+
+    return compiled;
+  };
 
   const handleConfirm = () => {
     const finalPayload = {
@@ -49,35 +154,25 @@ export const AiReviewModal: React.FC<AiReviewModalProps> = ({
       quantity: Number(quantity),
       priority,
       deadline_days: deadlineDays ? Number(deadlineDays) : null,
-      technical_specs: {
-        ...parsedData.technical_specs,
-        estimated_clay_kg: Number(clayKg),
-        glaze_type: glazeType,
-        dimensions: {
-          ...parsedData.technical_specs.dimensions,
-          height_cm: Number(heightCm),
-        },
-        firing_specs: {
-          ...parsedData.technical_specs.firing_specs,
-          target_temperature_c: Number(tempC),
-          estimated_duration_hours: Number(durationHours),
-        },
-      },
+      technical_specs: getCompiledJsonb(),
     };
     onConfirm(finalPayload);
   };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ padding: '28px' }}>
-        
+      <div
+        className="modal-content"
+        onClick={(e) => e.stopPropagation()}
+        style={{ padding: '28px', maxWidth: '780px' }}
+      >
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div
               style={{
-                width: '36px',
-                height: '36px',
+                width: '38px',
+                height: '38px',
                 borderRadius: '10px',
                 background: 'rgba(59, 130, 246, 0.2)',
                 display: 'flex',
@@ -89,9 +184,9 @@ export const AiReviewModal: React.FC<AiReviewModalProps> = ({
               <Sparkles size={20} />
             </div>
             <div>
-              <h3 style={{ fontSize: '18px', fontWeight: 700 }}>Kiểm Duyệt Thông Số AI Bóc Tách (Pre-flight Review)</h3>
+              <h3 style={{ fontSize: '18px', fontWeight: 700 }}>Kiểm Duyệt Thông Số Kỹ Thuật (Lưu JSONB)</h3>
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                Dữ liệu do AI ước tính - Quản đốc xưởng có thể kiểm tra & điều chỉnh trước khi kích hoạt
+                Dữ liệu do AI ước tính - Quản đốc có thể thêm, bớt hoặc chỉnh sửa bất kỳ thông số nào
               </p>
             </div>
           </div>
@@ -124,7 +219,7 @@ export const AiReviewModal: React.FC<AiReviewModalProps> = ({
         )}
 
         {/* Core Order Fields */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '18px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '20px' }}>
           <div>
             <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
               Tên sản phẩm
@@ -211,122 +306,124 @@ export const AiReviewModal: React.FC<AiReviewModalProps> = ({
           </div>
         </div>
 
-        {/* Dynamic Technical Specs (Hybrid JSONB values) */}
+        {/* 🌟 Unified Dynamic Technical Specifications Section (Toàn Bộ Lưu JSONB) */}
         <div
           style={{
-            background: 'rgba(0,0,0,0.3)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(30, 41, 59, 0.45)',
+            border: '1px solid rgba(59, 130, 246, 0.25)',
             borderRadius: 'var(--radius-md)',
-            padding: '16px',
+            padding: '18px',
             marginBottom: '20px',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
-            <Layers size={15} style={{ color: '#ea580c' }} />
-            <strong style={{ fontSize: '13px', color: '#f8fafc' }}>Thông Số Kỹ Thuật Động (Lưu JSONB)</strong>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Layers size={16} style={{ color: '#38bdf8' }} />
+              <strong style={{ fontSize: '14px', color: '#38bdf8' }}>
+                Thông Số Kỹ Thuật Động (Lưu PostgreSQL JSONB)
+              </strong>
+            </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
-                🧱 Đất sét dự tính (kg)
-              </label>
-              <input
-                type="number"
-                value={clayKg}
-                onChange={(e) => setClayKg(Number(e.target.value))}
+          {/* Quick presets chips */}
+          <div style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px' }}>
+              <Tag size={11} /> Gợi ý thêm nhanh:
+            </span>
+            {COMMON_CUSTOM_PRESETS.map((preset, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => handleAddSpecRow(preset.key, preset.value)}
                 style={{
-                  width: '100%',
-                  background: '#0f172a',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  borderRadius: '6px',
-                  padding: '7px 10px',
-                  color: '#fff',
-                  fontSize: '13px',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '4px',
+                  padding: '3px 8px',
+                  fontSize: '11px',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
                 }}
-              />
-            </div>
+              >
+                + {preset.key}
+              </button>
+            ))}
+          </div>
 
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
-                🔥 Nhiệt độ lò (°C)
-              </label>
-              <input
-                type="number"
-                value={tempC}
-                onChange={(e) => setTempC(Number(e.target.value))}
-                style={{
-                  width: '100%',
-                  background: '#0f172a',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  borderRadius: '6px',
-                  padding: '7px 10px',
-                  color: '#fb923c',
-                  fontWeight: 600,
-                  fontSize: '13px',
-                }}
-              />
-            </div>
+          {/* Specs List Rows */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '280px', overflowY: 'auto', paddingRight: '4px' }}>
+            {specsList.map((spec) => (
+              <div key={spec.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="Tên thông số kỹ thuật (ví dụ: Đất sét, Nhiệt độ lò, Độ co ngót...)"
+                  value={spec.key}
+                  onChange={(e) => handleUpdateSpecRow(spec.id, 'key', e.target.value)}
+                  style={{
+                    flex: 1.1,
+                    background: '#0f172a',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: '6px',
+                    padding: '8px 10px',
+                    color: '#38bdf8',
+                    fontWeight: 600,
+                    fontSize: '12.5px',
+                  }}
+                />
+                <input
+                  type="text"
+                  placeholder="Giá trị thông số (ví dụ: 120 kg, 1280°C, 12%...)"
+                  value={spec.value}
+                  onChange={(e) => handleUpdateSpecRow(spec.id, 'value', e.target.value)}
+                  style={{
+                    flex: 1.6,
+                    background: '#0f172a',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: '6px',
+                    padding: '8px 10px',
+                    color: '#fff',
+                    fontSize: '12.5px',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => handleRemoveSpecRow(spec.id)}
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.12)',
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    color: '#f87171',
+                    borderRadius: '6px',
+                    padding: '8px 10px',
+                    cursor: 'pointer',
+                  }}
+                  title="Xóa thông số này"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
 
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
-                ⏱ Thời gian nung (giờ)
-              </label>
-              <input
-                type="number"
-                value={durationHours}
-                onChange={(e) => setDurationHours(Number(e.target.value))}
-                style={{
-                  width: '100%',
-                  background: '#0f172a',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  borderRadius: '6px',
-                  padding: '7px 10px',
-                  color: '#fff',
-                  fontSize: '13px',
-                }}
-              />
-            </div>
-
-            <div style={{ gridColumn: 'span 2' }}>
-              <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
-                🎨 Loại men sử dụng
-              </label>
-              <input
-                type="text"
-                value={glazeType}
-                onChange={(e) => setGlazeType(e.target.value)}
-                style={{
-                  width: '100%',
-                  background: '#0f172a',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  borderRadius: '6px',
-                  padding: '7px 10px',
-                  color: '#fff',
-                  fontSize: '13px',
-                }}
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
-                📏 Chiều cao (cm)
-              </label>
-              <input
-                type="number"
-                value={heightCm}
-                onChange={(e) => setHeightCm(Number(e.target.value))}
-                style={{
-                  width: '100%',
-                  background: '#0f172a',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  borderRadius: '6px',
-                  padding: '7px 10px',
-                  color: '#fff',
-                  fontSize: '13px',
-                }}
-              />
-            </div>
+          {/* Dấu cộng thêm thông số ở ngay bên dưới */}
+          <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed rgba(255,255,255,0.08)' }}>
+            <button
+              type="button"
+              onClick={() => handleAddSpecRow()}
+              className="btn btn-ghost"
+              style={{
+                width: '100%',
+                padding: '8px',
+                fontSize: '12.5px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                color: '#38bdf8',
+                border: '1px dashed rgba(56, 189, 248, 0.3)',
+              }}
+            >
+              <Plus size={15} /> Thêm Thông Số Kỹ Thuật Mới
+            </button>
           </div>
         </div>
 
@@ -339,7 +436,7 @@ export const AiReviewModal: React.FC<AiReviewModalProps> = ({
             style={{ fontSize: '12px', padding: '6px 10px', display: 'flex', alignItems: 'center', gap: '6px' }}
           >
             <FileCode size={14} />
-            {showJson ? 'Ẩn JSON Schema Chuẩn' : 'Xem Raw JSON Schema Chuẩn từ AI'}
+            {showJson ? 'Ẩn Live JSONB Payload' : 'Xem Trực Quan Live JSONB Payload Sẽ Lưu Vào PostgreSQL'}
           </button>
           {showJson && (
             <pre
@@ -355,7 +452,7 @@ export const AiReviewModal: React.FC<AiReviewModalProps> = ({
                 border: '1px solid rgba(255,255,255,0.08)',
               }}
             >
-              {JSON.stringify(parsedData, null, 2)}
+              {JSON.stringify(getCompiledJsonb(), null, 2)}
             </pre>
           )}
         </div>

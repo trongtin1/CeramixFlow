@@ -1,14 +1,15 @@
 import React from 'react';
-import { X, CheckCircle2, Clock, AlertTriangle, Layers, Flame, FileText, Sparkles } from 'lucide-react';
+import { X, CheckCircle2, Clock, AlertTriangle, Layers, Flame, FileText, Sparkles, Edit3 } from 'lucide-react';
 import { Batch, StageNameType } from '../types';
 
 interface BatchDetailModalProps {
   batch: Batch | null;
   isOpen: boolean;
   onClose: () => void;
+  onOpenEdit?: (batch: Batch) => void;
 }
 
-export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({ batch, isOpen, onClose }) => {
+export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({ batch, isOpen, onClose, onOpenEdit }) => {
   if (!isOpen || !batch) return null;
 
   const specs = batch.technicalSpecs || {};
@@ -30,9 +31,25 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({ batch, isOpe
               Khởi tạo lúc: {new Date(batch.createdAt).toLocaleString('vi-VN')}
             </p>
           </div>
-          <button onClick={onClose} className="btn-ghost" style={{ padding: '6px', borderRadius: '8px' }}>
-            <X size={18} />
-          </button>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {onOpenEdit && (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  onClose();
+                  onOpenEdit(batch);
+                }}
+                style={{ padding: '6px 12px', fontSize: '12px', color: '#fb923c', border: '1px solid rgba(251, 146, 60, 0.3)' }}
+              >
+                <Edit3 size={13} /> Sửa Thông Số
+              </button>
+            )}
+            <button onClick={onClose} className="btn-ghost" style={{ padding: '6px', borderRadius: '8px' }}>
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Raw prompt quote */}
@@ -116,6 +133,32 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({ batch, isOpe
               <strong>{specs.artwork_details || 'Họa tiết thủ công Bát Tràng'}</strong>
             </div>
           </div>
+
+          {/* Dynamic Custom Attributes in JSONB */}
+          {specs.custom_attributes && Object.keys(specs.custom_attributes).length > 0 && (
+            <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid rgba(59, 130, 246, 0.2)' }}>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '8px' }}>
+                ✨ Thuộc Tính Kỹ Thuật Tùy Chỉnh (Custom JSONB Fields):
+              </span>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                {Object.entries(specs.custom_attributes).map(([k, v]: [string, any], idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      background: 'rgba(56, 189, 248, 0.08)',
+                      border: '1px solid rgba(56, 189, 248, 0.2)',
+                      borderRadius: '6px',
+                      padding: '6px 10px',
+                      fontSize: '12px',
+                    }}
+                  >
+                    <span style={{ color: '#94a3b8' }}>{k}: </span>
+                    <strong style={{ color: '#e0f2fe' }}>{String(v)}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {specs.additional_notes && specs.additional_notes.length > 0 && (
             <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>

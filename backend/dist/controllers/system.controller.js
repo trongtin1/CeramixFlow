@@ -1,11 +1,8 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SystemController = void 0;
 const workflow_service_1 = require("../services/workflow.service");
-const prisma_1 = __importDefault(require("../config/prisma"));
+const seed_service_1 = require("../services/seed.service");
 class SystemController {
     /**
      * API: GET /api/system/dashboard
@@ -26,17 +23,14 @@ class SystemController {
     }
     /**
      * API: POST /api/system/reset-demo
-     * Reset lại dữ liệu demo để dễ dàng trình diễn
+     * Reset lại dữ liệu demo & nạp 9 mẻ gốm mẫu đa dạng độ ưu tiên
      */
     static async resetDemoData(req, res) {
         try {
-            await prisma_1.default.incidentReport.deleteMany({});
-            await prisma_1.default.batchStageLog.deleteMany({});
-            await prisma_1.default.batch.deleteMany({});
-            await prisma_1.default.systemEventLog.deleteMany({});
+            await (0, seed_service_1.seedDatabase)();
             return res.status(200).json({
                 success: true,
-                message: 'Đã làm sạch dữ liệu để bắt đầu phiên kiểm thử mới!',
+                message: 'Đã nạp thành công 9 mẻ gốm mẫu đa dạng độ ưu tiên & thời hạn!',
             });
         }
         catch (err) {

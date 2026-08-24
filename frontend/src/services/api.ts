@@ -16,6 +16,28 @@ export async function parseOrderWithAi(text: string): Promise<AiParsedOrder> {
   return json.data;
 }
 
+export async function chatWithAssistant(
+  messages: { role: 'user' | 'assistant' | 'system'; content: string }[]
+): Promise<{
+  reply: string;
+  is_complete: boolean;
+  missing_fields: string[];
+  suggested_options?: string[];
+  extracted_specs: AiParsedOrder | null;
+}> {
+  const res = await fetch(`${API_BASE}/chat/assistant`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages }),
+  });
+
+  const json = await res.json();
+  if (!res.ok || !json.success) {
+    throw new Error(json.message || 'Lỗi hội thoại cùng Trợ lý AI');
+  }
+  return json.data;
+}
+
 export async function createBatch(data: {
   raw_description: string;
   product_name: string;
@@ -42,6 +64,43 @@ export async function getAllBatches(): Promise<Batch[]> {
   const json = await res.json();
   if (!res.ok || !json.success) {
     throw new Error(json.message || 'Lỗi tải danh sách mẻ');
+  }
+  return json.data;
+}
+
+export async function reorderBatches(orderedIds: string[]): Promise<Batch[]> {
+  const res = await fetch(`${API_BASE}/batches/reorder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderedIds }),
+  });
+
+  const json = await res.json();
+  if (!res.ok || !json.success) {
+    throw new Error(json.message || 'Lỗi lưu thứ tự kéo thả');
+  }
+  return json.data;
+}
+
+export async function updateBatch(
+  id: string,
+  data: {
+    product_name?: string;
+    quantity?: number;
+    priority?: Priority;
+    deadline_days?: number | null;
+    technical_specs?: any;
+  }
+): Promise<Batch> {
+  const res = await fetch(`${API_BASE}/batches/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+
+  const json = await res.json();
+  if (!res.ok || !json.success) {
+    throw new Error(json.message || 'Lỗi cập nhật mẻ gốm');
   }
   return json.data;
 }

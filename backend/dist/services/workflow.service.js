@@ -84,17 +84,112 @@ class WorkflowService {
         };
     }
     /**
-     * Lấy danh sách tất cả các mẻ gốm
+     * Cập nhật thông tin mẻ gốm (Độ ưu tiên, Tên, Số lượng, Thông số kỹ thuật)
+     */
+    async updateBatch(id, payload) {
+        const existing = await prisma_1.default.batch.findUnique({ where: { id } });
+        if (!existing) {
+            throw new Error('Không tìm thấy mẻ gốm cần cập nhật.');
+        }
+        const dataToUpdate = {};
+        if (payload.product_name !== undefined)
+            dataToUpdate.productName = payload.product_name;
+        if (payload.quantity !== undefined)
+            dataToUpdate.quantity = payload.quantity;
+        if (payload.priority !== undefined)
+            dataToUpdate.priority = payload.priority;
+        if (payload.deadline_days !== undefined)
+            dataToUpdate.deadlineDays = payload.deadline_days;
+        if (payload.technical_specs !== undefined) {
+            dataToUpdate.technicalSpecs = JSON.stringify(payload.technical_specs);
+        }
+        await prisma_1.default.batch.update({
+            where: { id },
+            data: dataToUpdate,
+        });
+        // Ghi log sự kiện cập nhật
+        await prisma_1.default.systemEventLog.create({
+            data: {
+                eventType: 'BATCH_UPDATED',
+                title: `Cập nhật mẻ #${existing.batchCode}`,
+                message: `Quản đốc đã điều chỉnh thông số & độ ưu tiên mẻ [${existing.batchCode}]: ${payload.priority ? `Ưu tiên -> ${payload.priority}` : ''}`,
+                metadata: JSON.stringify({ batchId: id, batchCode: existing.batchCode, updates: payload }),
+            },
+        });
+        return this.getBatchById(id);
+    }
+    /**
+     * Cập nhật lại thứ tự ưu tiên kéo thả (Drag & Drop Manual Reorder)
+     */
+    async reorderBatches(orderedIds) {
+        await prisma_1.default.$transaction(async (tx) => {
+            for (let i = 0; i < orderedIds.length; i++) {
+                const id = orderedIds[i];
+                const batch = await tx.batch.findUnique({ where: { id } });
+                if (batch) {
+                    const specs = JSON.parse(batch.technicalSpecs || '{}');
+                    specs.custom_rank = i + 1;
+                    await tx.batch.update({
+                        where: { id },
+                        data: { technicalSpecs: JSON.stringify(specs) },
+                    });
+                }
+            }
+        });
+        return this.getAllBatches();
+    }
+    /**
+     * Lấy danh sách tất cả các mẻ gốm (Sắp xếp theo thứ tự ưu tiên: URGENT -> HIGH -> MEDIUM -> LOW, custom_rank, EDD, FIFO)
      */
     async getAllBatches() {
         const batches = await prisma_1.default.batch.findMany({
-            orderBy: { createdAt: 'desc' },
             include: {
                 stages: true,
                 incidents: true,
             },
         });
-        return batches.map((b) => ({
+        const PRIORITY_ORDER = {
+            URGENT: 1,
+            HIGH: 2,
+            MEDIUM: 3,
+            LOW: 4,
+        };
+        // Thuật toán điều phối đa tầng (Multi-tier Workshop Scheduling Engine):
+        // Tầng 1: Cấp độ ưu tiên (URGENT > HIGH > MEDIUM > LOW)
+        // Tầng 2: Thứ tự kéo thả thủ công của Quản đốc (custom_rank)
+        // Tầng 3 (Tie-breaker 1): Hạn giao hàng sớm hơn (Earliest Due Date - EDD: deadlineDays ít ngày hơn)
+        // Tầng 4 (Tie-breaker 2): Thời điểm vào xưởng (FIFO: First-In-First-Out, createdAt cũ hơn làm trước)
+        const sortedBatches = batches.sort((a, b) => {
+            // 1. So sánh cấp độ ưu tiên
+            const priorityA = PRIORITY_ORDER[a.priority] || 99;
+            const priorityB = PRIORITY_ORDER[b.priority] || 99;
+            if (priorityA !== priorityB) {
+                return priorityA - priorityB;
+            }
+            // 2. Thứ tự kéo thả thủ công (custom_rank)
+            const specsA = JSON.parse(a.technicalSpecs || '{}');
+            const specsB = JSON.parse(b.technicalSpecs || '{}');
+            const rankA = typeof specsA.custom_rank === 'number' ? specsA.custom_rank : null;
+            const rankB = typeof specsB.custom_rank === 'number' ? specsB.custom_rank : null;
+            if (rankA !== null && rankB !== null && rankA !== rankB) {
+                return rankA - rankB;
+            }
+            else if (rankA !== null && rankB === null) {
+                return -1;
+            }
+            else if (rankA === null && rankB !== null) {
+                return 1;
+            }
+            // 3. Đồng cấp ưu tiên & chưa kéo thả -> So sánh Thời hạn giao hàng (EDD rule)
+            const deadlineA = a.deadlineDays !== null && a.deadlineDays !== undefined ? a.deadlineDays : 9999;
+            const deadlineB = b.deadlineDays !== null && b.deadlineDays !== undefined ? b.deadlineDays : 9999;
+            if (deadlineA !== deadlineB) {
+                return deadlineA - deadlineB;
+            }
+            // 4. Cùng thời hạn -> Áp dụng FIFO (Mẻ nào tạo trước/chờ lâu hơn thì làm trước)
+            return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        });
+        return sortedBatches.map((b) => ({
             ...b,
             technicalSpecs: JSON.parse(b.technicalSpecs || '{}'),
         }));

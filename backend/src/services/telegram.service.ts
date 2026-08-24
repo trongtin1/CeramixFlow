@@ -71,6 +71,14 @@ export class TelegramService {
     const specs = typeof batch.technicalSpecs === 'string' ? JSON.parse(batch.technicalSpecs) : batch.technicalSpecs;
     const priorityEmoji = batch.priority === 'URGENT' ? '🔥 KHẨN CẤP' : batch.priority === 'HIGH' ? '⚡ CAO' : '📌 TIÊU CHUẨN';
 
+    let customSpecsText = '';
+    if (specs?.custom_attributes && Object.keys(specs.custom_attributes).length > 0) {
+      customSpecsText = '\n\n✨ <b>THUỘC TÍNH TÙY CHỈNH (CUSTOM JSONB):</b>\n' +
+        Object.entries(specs.custom_attributes)
+          .map(([k, v]) => `• 🔹 <b>${k}:</b> <code>${v}</code>`)
+          .join('\n');
+    }
+
     const message = `
 🏺 <b>[XƯỞNG GỐM] KHỞI TẠO MẺ SẢN XUẤT MỚI #${batch.batchCode}</b>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -82,7 +90,7 @@ export class TelegramService {
 • 🧱 <b>Ước tính đất sét:</b> <code>${specs?.estimated_clay_kg || 'N/A'} kg</code>
 • 🎨 <b>Loại men:</b> ${specs?.glaze_type || 'N/A'}
 • 🔥 <b>Nhiệt độ nung:</b> <code>${specs?.firing_specs?.target_temperature_c || 'N/A'}°C</code> (~${specs?.firing_specs?.estimated_duration_hours || '12'}h)
-• 📏 <b>Kích thước:</b> Cao ${specs?.dimensions?.height_cm || '30'}cm
+• 📏 <b>Kích thước:</b> Cao ${specs?.dimensions?.height_cm || '30'}cm${customSpecsText}
 
 🚀 <i>Quy trình 6 công đoạn đã được kích hoạt tại trạm: <b>Tạo hình mộc</b></i>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
