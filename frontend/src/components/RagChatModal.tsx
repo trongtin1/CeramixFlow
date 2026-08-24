@@ -383,7 +383,6 @@ export const RagChatModal: React.FC<RagChatModalProps> = ({
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#34d399', fontWeight: 700, fontSize: '13px' }}>
                           <CheckCircle2 size={16} /> ĐÃ BÓC TÁCH HOÀN THIỆN ĐẦY ĐỦ THÔNG SỐ
                         </div>
-                        <span className="badge badge-high">{msg.extracted_specs.priority}</span>
                       </div>
 
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '12px', color: '#cbd5e1', marginBottom: '12px' }}>

@@ -1,0 +1,29 @@
+1
+00:00:01,000 --> 00:00:35,000
+CeramixFlow - Hệ Thống Điều Phối & Giám Sát Sản Xuất Xưởng Gốm Sứ Đa Bước
+Bước 1: Tiếp nhận yêu cầu & Chat RAG AI tự động phát hiện thông số thiếu, bổ sung thông số chuyên sâu.
+
+2
+00:00:36,000 --> 00:00:55,000
+Bước 2: AI tự động tính toán định mức đất sét, nhiệt độ lò nung và mở Pre-flight Review
+Quản đốc kiểm duyệt thông số kỹ thuật và bấm "Xác Nhận & Khởi Tạo Mẻ Sản Xuất".
+
+3
+00:00:56,000 --> 00:01:20,000
+Bước 3: Điều phối Kanban 6 công đoạn - Kéo thả tự do & Chuyển tiến công đoạn siêu tốc 0ms
+Hệ thống hỗ trợ xác nhận 2 chiều đồng thời trên Web và nút bấm Telegram với cơ chế chống xung đột.
+
+4
+00:01:21,000 --> 00:01:50,000
+Bước 4: Tính năng Rework - Kéo lùi công đoạn tái chế phôi mộc & Bắn cảnh báo điều phối lại
+Tự động đặt lại trạng thái các trạm sau về Pending, ghi nhật ký Audit Log và thông báo tới đội ngũ sản xuất.
+
+5
+00:01:51,000 --> 00:02:20,000
+Bước 5: Báo cáo sự cố QC tại lò nung & Bắn CẢNH BÁO ĐỎ khẩn cấp về Telegram
+Ghi nhận 5 sản phẩm nứt men để Quản đốc xưởng kịp thời xử lý và lên phương án bù mẻ.
+
+6
+00:02:21,000 --> 00:02:50,000
+Bước 6: Bộ công cụ mật độ cao (Deep Search, Chế độ Thu gọn) & Tổng kết Kiến trúc Hybrid JSONB
+Tổng kết: Toàn vẹn ACID cho State Machine & Linh hoạt tối đa cho thông số kỹ thuật gốm sứ!

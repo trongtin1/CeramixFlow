@@ -116,6 +116,22 @@ export async function advanceBatchStage(batchId: string): Promise<Batch> {
   return json.data;
 }
 
+export async function rollbackBatchStage(
+  batchId: string,
+  data: { target_stage: string; reason: string }
+): Promise<Batch> {
+  const res = await fetch(`${API_BASE}/batches/${batchId}/rollback`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  const json = await res.json();
+  if (!res.ok || !json.success) {
+    throw new Error(json.message || 'Lỗi chuyển lùi công đoạn');
+  }
+  return json.data;
+}
+
 export async function reportQcIncident(
   batchId: string,
   data: { defect_count: number; reason: string; severity?: 'WARNING' | 'CRITICAL' }

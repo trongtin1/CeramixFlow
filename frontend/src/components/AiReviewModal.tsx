@@ -219,7 +219,7 @@ export const AiReviewModal: React.FC<AiReviewModalProps> = ({
         )}
 
         {/* Core Order Fields */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr', gap: '12px', marginBottom: '20px' }}>
           <div>
             <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
               Tên sản phẩm
@@ -258,30 +258,6 @@ export const AiReviewModal: React.FC<AiReviewModalProps> = ({
                 fontSize: '13.5px',
               }}
             />
-          </div>
-
-          <div>
-            <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>
-              Độ ưu tiên
-            </label>
-            <select
-              value={priority}
-              onChange={(e) => setPriority(e.target.value as Priority)}
-              style={{
-                width: '100%',
-                background: '#1e293b',
-                border: '1px solid rgba(255,255,255,0.15)',
-                borderRadius: '8px',
-                padding: '9px 12px',
-                color: '#fff',
-                fontSize: '13.5px',
-              }}
-            >
-              <option value="LOW">LOW - Bình thường</option>
-              <option value="MEDIUM">MEDIUM - Tiêu chuẩn</option>
-              <option value="HIGH">HIGH - Ưu tiên cao</option>
-              <option value="URGENT">URGENT - Khẩn cấp / Gấp</option>
-            </select>
           </div>
 
           <div>

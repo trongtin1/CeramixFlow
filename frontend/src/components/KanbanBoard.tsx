@@ -18,12 +18,14 @@ import {
   LayoutGrid,
   List,
   Filter,
+  RotateCcw,
 } from 'lucide-react';
 import { Batch, StageNameType, Priority } from '../types';
 
 interface KanbanBoardProps {
   batches: Batch[];
   onAdvanceStage: (batchId: string) => Promise<void>;
+  onOpenRollbackModal: (batch: Batch, targetStage?: StageNameType) => void;
   onOpenQcModal: (batch: Batch) => void;
   onOpenDetailModal: (batch: Batch) => void;
   onOpenEditModal: (batch: Batch) => void;
@@ -46,6 +48,7 @@ const STAGES_CONFIG: { id: StageNameType; title: string; subtitle: string; icon:
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   batches,
   onAdvanceStage,
+  onOpenRollbackModal,
   onOpenQcModal,
   onOpenDetailModal,
   onOpenEditModal,
@@ -55,40 +58,14 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   isAdvancingId,
   isLoading = false,
 }) => {
-  // High-Density Tools: Search, Filter, Compact View
+  // High-Density Tools: Search, Compact View
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedPriorityFilter, setSelectedPriorityFilter] = useState<'ALL' | Priority>('ALL');
   const [viewMode, setViewMode] = useState<'detailed' | 'compact'>('detailed');
 
   // Drag & Drop States
   const [draggedBatchId, setDraggedBatchId] = useState<string | null>(null);
   const [dragOverBatchId, setDragOverBatchId] = useState<string | null>(null);
   const [dragOverStageId, setDragOverStageId] = useState<string | null>(null);
-
-  const getPriorityBadge = (priority: Priority, isCompact = false) => {
-    switch (priority) {
-      case 'URGENT':
-        return <span className="badge badge-urgent">{isCompact ? '🔥 Khẩn' : '🔥 Gấp / Khẩn'}</span>;
-      case 'HIGH':
-        return <span className="badge badge-high">{isCompact ? '⚡ Cao' : '⚡ Ưu tiên cao'}</span>;
-      case 'LOW':
-        return <span className="badge badge-low">{isCompact ? 'Bình thường' : 'Bình thường'}</span>;
-      default:
-        return <span className="badge badge-medium">{isCompact ? 'Chuẩn' : 'Tiêu chuẩn'}</span>;
-    }
-  };
-
-  // Count priority statistics
-  const priorityStats = useMemo(() => {
-    const active = batches.filter((b) => b.overallStatus === 'IN_PROGRESS');
-    return {
-      all: active.length,
-      urgent: active.filter((b) => b.priority === 'URGENT').length,
-      high: active.filter((b) => b.priority === 'HIGH').length,
-      medium: active.filter((b) => b.priority === 'MEDIUM').length,
-      low: active.filter((b) => b.priority === 'LOW').length,
-    };
-  }, [batches]);
 
   // 1. Bắt đầu kéo thẻ
   const handleDragStart = (e: React.DragEvent, batch: Batch) => {
@@ -101,6 +78,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   const handleDragOverCard = (e: React.DragEvent, batchId: string) => {
     e.preventDefault();
     e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
     if (draggedBatchId !== batchId && dragOverBatchId !== batchId) {
       setDragOverBatchId(batchId);
     }
@@ -109,12 +87,13 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   // 3. Kéo đè lên một cột công đoạn
   const handleDragOverStage = (e: React.DragEvent, stageId: string) => {
     e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
     if (dragOverStageId !== stageId) {
       setDragOverStageId(stageId);
     }
   };
 
-  // 4. Thả thẻ vào một vị trí thẻ khác (Reorder trong cùng cột)
+  // 4. Thả thẻ vào một vị trí thẻ khác (Reorder trong cùng cột hoặc Chuyển trạm)
   const handleDropOnCard = async (
     e: React.DragEvent,
     targetBatch: Batch,
@@ -122,7 +101,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   ) => {
     e.preventDefault();
     e.stopPropagation();
-    const sourceBatchId = draggedBatchId;
+    const sourceBatchId = draggedBatchId || e.dataTransfer.getData('text/plain');
     setDraggedBatchId(null);
     setDragOverBatchId(null);
     setDragOverStageId(null);
@@ -146,14 +125,20 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
         }
       }
     } else {
-      await onAdvanceStage(sourceBatch.id);
+      const sourceIdx = STAGES_CONFIG.findIndex((s) => s.id === sourceBatch.currentStage);
+      const targetIdx = STAGES_CONFIG.findIndex((s) => s.id === targetBatch.currentStage);
+      if (targetIdx > sourceIdx) {
+        await onAdvanceStage(sourceBatch.id);
+      } else if (targetIdx < sourceIdx) {
+        onOpenRollbackModal(sourceBatch, targetBatch.currentStage);
+      }
     }
   };
 
-  // 5. Thả thẻ vào cột công đoạn khác -> Chuyển công đoạn
+  // 5. Thả thẻ vào cột công đoạn khác -> Chuyển công đoạn (tiến hoặc lùi)
   const handleDropOnStage = async (e: React.DragEvent, targetStageId: StageNameType) => {
     e.preventDefault();
-    const sourceBatchId = draggedBatchId;
+    const sourceBatchId = draggedBatchId || e.dataTransfer.getData('text/plain');
     setDraggedBatchId(null);
     setDragOverBatchId(null);
     setDragOverStageId(null);
@@ -163,7 +148,13 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
     if (!sourceBatch) return;
 
     if (sourceBatch.currentStage !== targetStageId) {
-      await onAdvanceStage(sourceBatch.id);
+      const sourceIdx = STAGES_CONFIG.findIndex((s) => s.id === sourceBatch.currentStage);
+      const targetIdx = STAGES_CONFIG.findIndex((s) => s.id === targetStageId);
+      if (targetIdx > sourceIdx) {
+        await onAdvanceStage(sourceBatch.id);
+      } else if (targetIdx < sourceIdx) {
+        onOpenRollbackModal(sourceBatch, targetStageId);
+      }
     }
   };
 
@@ -341,98 +332,6 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
               </button>
             )}
           </div>
-
-          {/* Priority Filter Chips */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Filter size={11} /> Lọc cấp độ:
-            </span>
-
-            <button
-              type="button"
-              onClick={() => setSelectedPriorityFilter('ALL')}
-              style={{
-                background: selectedPriorityFilter === 'ALL' ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.05)',
-                border: selectedPriorityFilter === 'ALL' ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.1)',
-                color: selectedPriorityFilter === 'ALL' ? '#38bdf8' : 'var(--text-secondary)',
-                padding: '4px 10px',
-                borderRadius: '6px',
-                fontSize: '11.5px',
-                cursor: 'pointer',
-                fontWeight: 600,
-              }}
-            >
-              Tất cả ({priorityStats.all})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setSelectedPriorityFilter('URGENT')}
-              style={{
-                background: selectedPriorityFilter === 'URGENT' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(255, 255, 255, 0.05)',
-                border: selectedPriorityFilter === 'URGENT' ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.1)',
-                color: selectedPriorityFilter === 'URGENT' ? '#fca5a5' : 'var(--text-secondary)',
-                padding: '4px 10px',
-                borderRadius: '6px',
-                fontSize: '11.5px',
-                cursor: 'pointer',
-                fontWeight: 600,
-              }}
-            >
-              🔥 Khẩn cấp ({priorityStats.urgent})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setSelectedPriorityFilter('HIGH')}
-              style={{
-                background: selectedPriorityFilter === 'HIGH' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(255, 255, 255, 0.05)',
-                border: selectedPriorityFilter === 'HIGH' ? '1px solid #f59e0b' : '1px solid rgba(255, 255, 255, 0.1)',
-                color: selectedPriorityFilter === 'HIGH' ? '#fcd34d' : 'var(--text-secondary)',
-                padding: '4px 10px',
-                borderRadius: '6px',
-                fontSize: '11.5px',
-                cursor: 'pointer',
-                fontWeight: 600,
-              }}
-            >
-              ⚡ Cao ({priorityStats.high})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setSelectedPriorityFilter('MEDIUM')}
-              style={{
-                background: selectedPriorityFilter === 'MEDIUM' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255, 255, 255, 0.05)',
-                border: selectedPriorityFilter === 'MEDIUM' ? '1px solid #3b82f6' : '1px solid rgba(255, 255, 255, 0.1)',
-                color: selectedPriorityFilter === 'MEDIUM' ? '#93c5fd' : 'var(--text-secondary)',
-                padding: '4px 10px',
-                borderRadius: '6px',
-                fontSize: '11.5px',
-                cursor: 'pointer',
-                fontWeight: 600,
-              }}
-            >
-              📌 Tiêu chuẩn ({priorityStats.medium})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setSelectedPriorityFilter('LOW')}
-              style={{
-                background: selectedPriorityFilter === 'LOW' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255, 255, 255, 0.05)',
-                border: selectedPriorityFilter === 'LOW' ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.1)',
-                color: selectedPriorityFilter === 'LOW' ? '#6ee7b7' : 'var(--text-secondary)',
-                padding: '4px 10px',
-                borderRadius: '6px',
-                fontSize: '11.5px',
-                cursor: 'pointer',
-                fontWeight: 600,
-              }}
-            >
-              🌿 Bình thường ({priorityStats.low})
-            </button>
-          </div>
         </div>
 
         {/* Quick Search Chips & Search Status Feedback */}
@@ -459,17 +358,14 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
             ))}
           </div>
 
-          {(searchTerm || selectedPriorityFilter !== 'ALL') && (
+          {searchTerm && (
             <div style={{ fontSize: '11.5px', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span>
-                Đang áp dụng bộ lọc {searchTerm ? `từ khóa "${searchTerm}"` : ''}
+                Đang tìm theo từ khóa: <strong>"{searchTerm}"</strong>
               </span>
               <button
                 type="button"
-                onClick={() => {
-                  setSearchTerm('');
-                  setSelectedPriorityFilter('ALL');
-                }}
+                onClick={() => setSearchTerm('')}
                 style={{
                   background: 'rgba(239, 68, 68, 0.15)',
                   border: '1px solid rgba(239, 68, 68, 0.3)',
@@ -498,18 +394,10 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
         }}
       >
         {STAGES_CONFIG.map((stage, colIdx) => {
-          const PRIORITY_ORDER: Record<string, number> = {
-            URGENT: 1,
-            HIGH: 2,
-            MEDIUM: 3,
-            LOW: 4,
-          };
-
           // Deep Search matching logic
           const stageBatches = batches
             .filter((b) => {
               if (b.currentStage !== stage.id || b.overallStatus !== 'IN_PROGRESS') return false;
-              if (selectedPriorityFilter !== 'ALL' && b.priority !== selectedPriorityFilter) return false;
               if (searchTerm.trim()) {
                 const q = searchTerm.toLowerCase();
                 const matchCode = b.batchCode.toLowerCase().includes(q);
@@ -541,12 +429,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
               return true;
             })
             .sort((a, b) => {
-              // 1. Cấp độ ưu tiên (URGENT > HIGH > MEDIUM > LOW)
-              const pA = PRIORITY_ORDER[a.priority] || 99;
-              const pB = PRIORITY_ORDER[b.priority] || 99;
-              if (pA !== pB) return pA - pB;
-
-              // 2. Thứ tự kéo thả thủ công (custom_rank)
+              // 1. Thứ tự kéo thả thủ công (custom_rank)
               const specsA = a.technicalSpecs || {};
               const specsB = b.technicalSpecs || {};
               const rankA = typeof specsA.custom_rank === 'number' ? specsA.custom_rank : null;
@@ -559,12 +442,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                 return 1;
               }
 
-              // 3. Đồng cấp ưu tiên & chưa kéo thả -> So sánh thời hạn hoàn thành (EDD)
-              const deadlineA = a.deadlineDays !== null && a.deadlineDays !== undefined ? a.deadlineDays : 9999;
-              const deadlineB = b.deadlineDays !== null && b.deadlineDays !== undefined ? b.deadlineDays : 9999;
-              if (deadlineA !== deadlineB) return deadlineA - deadlineB;
-
-              // 4. Cùng thời hạn -> Áp dụng FIFO
+              // 2. Thứ tự vào xưởng tự nhiên FIFO
               return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
             });
 
@@ -621,6 +499,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
 
               {/* Cards List (Cuộn mượt riêng biệt từng cột khi dữ liệu nhiều) */}
               <div
+                onDragOver={(e) => handleDragOverStage(e, stage.id)}
+                onDrop={(e) => handleDropOnStage(e, stage.id)}
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
@@ -628,6 +508,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                   flex: 1,
                   overflowY: 'auto',
                   paddingRight: '4px',
+                  minHeight: '380px',
                 }}
               >
                 {isLoading && stageBatches.length === 0 ? (
@@ -636,6 +517,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                   </div>
                 ) : stageBatches.length === 0 ? (
                   <div
+                    onDragOver={(e) => handleDragOverStage(e, stage.id)}
+                    onDrop={(e) => handleDropOnStage(e, stage.id)}
                     style={{
                       border: isColumnHovered ? '2px dashed #60a5fa' : '1px dashed rgba(255,255,255,0.08)',
                       borderRadius: '8px',
@@ -644,6 +527,10 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                       color: isColumnHovered ? '#60a5fa' : 'var(--text-muted)',
                       fontSize: '12px',
                       margin: 'auto 0',
+                      minHeight: '120px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}
                   >
                     {isColumnHovered ? 'Thả mẻ gốm vào trạm này 🎯' : 'Trống tại trạm này'}
@@ -695,7 +582,6 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                                 #{batch.batchCode}
                               </span>
                             </div>
-                            {getPriorityBadge(batch.priority, true)}
                           </div>
 
                           <div style={{ fontSize: '12px', fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -773,7 +659,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                           boxShadow: isDragTarget ? '0 0 16px rgba(56, 189, 248, 0.4)' : undefined,
                         }}
                       >
-                        {/* Card Top: Drag Handle Grip, Rank Order, Code & Priority Badge */}
+                        {/* Card Top: Drag Handle Grip, Rank Order & Code */}
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <div
@@ -787,13 +673,13 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                               style={{
                                 fontSize: '10px',
                                 fontWeight: 800,
-                                background: batchIdx === 0 && batch.priority === 'URGENT' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(255,255,255,0.1)',
-                                color: batchIdx === 0 && batch.priority === 'URGENT' ? '#fca5a5' : '#94a3b8',
-                                border: batchIdx === 0 && batch.priority === 'URGENT' ? '1px solid rgba(239, 68, 68, 0.5)' : '1px solid rgba(255,255,255,0.1)',
+                                background: 'rgba(255,255,255,0.1)',
+                                color: '#94a3b8',
+                                border: '1px solid rgba(255,255,255,0.1)',
                                 borderRadius: '4px',
                                 padding: '1px 5px',
                               }}
-                              title={`Thứ tự ưu tiên xử lý trong trạm: #${batchIdx + 1}`}
+                              title={`Thứ tự xử lý trong trạm: #${batchIdx + 1}`}
                             >
                               #{batchIdx + 1}
                             </span>
@@ -801,7 +687,6 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                               #{batch.batchCode}
                             </span>
                           </div>
-                          {getPriorityBadge(batch.priority)}
                         </div>
 
                         {/* Title */}

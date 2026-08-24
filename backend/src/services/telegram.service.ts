@@ -1,6 +1,6 @@
 import TelegramBot from 'node-telegram-bot-api';
 import prisma from '../config/prisma';
-import { STAGE_DISPLAY_NAMES, StageNameType } from '../schemas/batchSchema';
+import { STAGES, STAGE_DISPLAY_NAMES, StageNameType } from '../schemas/batchSchema';
 
 export class TelegramService {
   private bot: TelegramBot | null = null;
@@ -12,15 +12,125 @@ export class TelegramService {
 
     if (token && token.trim() !== '' && chatId && chatId.trim() !== '') {
       try {
-        this.bot = new TelegramBot(token, { polling: false });
+        // Khởi tạo Telegram Bot ở chế độ Polling để nhận tương tác nút bấm từ thợ/quản lý
+        this.bot = new TelegramBot(token, { polling: true });
         this.chatId = chatId;
         console.log('[Telegram Service] Bot đã kết nối thành công với Chat ID:', chatId);
+        
+        this.setupCallbackHandlers();
       } catch (err: any) {
         console.error('[Telegram Service] Lỗi khởi tạo bot:', err.message);
       }
     } else {
       console.log('[Telegram Service] Chế độ Live Simulation (chưa cấu hình TELEGRAM_BOT_TOKEN / CHAT_ID). Log sẽ hiển thị trực tiếp trên Web Dashboard.');
     }
+  }
+
+  /**
+   * Thiết lập bộ lắng nghe sự kiện nút bấm trực tiếp trên Telegram (Inline Keyboard Callbacks)
+   * Kèm cơ chế chống xung đột (Conflict Resolution & Idempotency) giữa Web và Telegram
+   */
+  private setupCallbackHandlers() {
+    if (!this.bot) return;
+
+    // Bắt lỗi polling để tránh crash ứng dụng khi mạng gián đoạn
+    this.bot.on('polling_error', (error) => {
+      console.log('[Telegram Bot Notice]:', error.message);
+    });
+
+    this.bot.on('callback_query', async (query) => {
+      try {
+        const data = query.data;
+        const fromUser = query.from?.first_name || query.from?.username || 'Thợ xưởng';
+        const userTag = query.from?.username ? `@${query.from.username}` : fromUser;
+
+        if (data?.startsWith('advance:')) {
+          // Format callback_data: advance:<batchId>:<expectedStage>
+          const parts = data.split(':');
+          const batchId = parts[1];
+          const expectedStage = parts[2]; // Công đoạn dự kiến khi nút được tạo
+
+          // Lazy load workflowService để tránh circular dependency
+          const { workflowService } = await import('./workflow.service');
+          
+          try {
+            // Chuyển trạm kèm kiểm tra chống xung đột
+            const updated = await workflowService.advanceStage(batchId, expectedStage);
+
+            if (updated) {
+              const currentStageDisplay = STAGE_DISPLAY_NAMES[updated.currentStage as StageNameType] || updated.currentStage;
+              
+              // Phản hồi toast ngay trên app Telegram
+              await this.bot?.answerCallbackQuery(query.id, {
+                text: `✅ Đã chuyển sang trạm: ${currentStageDisplay}!`,
+                show_alert: false,
+              });
+
+              // Cập nhật tin nhắn trên Telegram để vô hiệu hóa nút bấm cũ và thông báo ai vừa bấm
+              if (query.message) {
+                const confirmNote = `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n✅ <b>XÁC NHẬN BỞI THỢ/QUẢN ĐỐC TRÊN TELEGRAM:</b>\n👤 <b>Người duyệt:</b> <b>${userTag}</b> (${fromUser})\n📍 <b>Trạng thái mới:</b> 🎯 <b>${currentStageDisplay}</b>\n⏰ <b>Thời điểm:</b> ${new Date().toLocaleTimeString('vi-VN')}`;
+                
+                await this.bot?.editMessageText(
+                  (query.message.text || '') + confirmNote,
+                  {
+                    chat_id: query.message.chat.id,
+                    message_id: query.message.message_id,
+                    parse_mode: 'HTML',
+                  }
+                ).catch(() => {});
+              }
+
+              // Ghi log hệ thống để cập nhật Web Dashboard
+              await this.logEvent(
+                'TELEGRAM_CONFIRMATION',
+                `Xác nhận từ Telegram bởi ${fromUser}`,
+                `Thợ/Quản đốc ${userTag} đã bấm nút trên Telegram để chuyển mẻ #${updated.batchCode} sang công đoạn: ${currentStageDisplay}.`,
+                { batchCode: updated.batchCode, confirmedBy: fromUser, newStage: updated.currentStage }
+              );
+            }
+          } catch (conflictErr: any) {
+            // 🛡️ XỬ LÝ XUNG ĐỘT: Nếu Quản đốc đã chuyển trên Web trước đó rồi
+            await this.bot?.answerCallbackQuery(query.id, {
+              text: `ℹ️ ${conflictErr.message}`,
+              show_alert: true,
+            });
+
+            // Xóa nút bấm cũ để tránh bấm lại
+            if (query.message) {
+              await this.bot?.editMessageReplyMarkup(
+                { inline_keyboard: [] },
+                { chat_id: query.message.chat.id, message_id: query.message.message_id }
+              ).catch(() => {});
+            }
+          }
+        } else if (data?.startsWith('qc_quick:')) {
+          const parts = data.split(':');
+          const batchId = parts[1];
+          
+          await this.bot?.answerCallbackQuery(query.id, {
+            text: `🚨 Đã ghi nhận cảnh báo sự cố từ Telegram!`,
+          });
+
+          const { workflowService } = await import('./workflow.service');
+          const batch = await prisma.batch.findUnique({ where: { id: batchId } });
+          
+          if (batch) {
+            await workflowService.reportIncident(batchId, {
+              defect_count: 1,
+              reason: `Phát hiện lỗi trực tiếp từ thợ/quản đốc (${userTag}) qua nút bấm trên Telegram`,
+              severity: 'CRITICAL',
+            });
+          }
+        }
+      } catch (err: any) {
+        console.error('[Telegram Callback Error]:', err.message);
+        if (query?.id) {
+          await this.bot?.answerCallbackQuery(query.id, {
+            text: `⚠️ Thao tác: ${err.message}`,
+          }).catch(() => {});
+        }
+      }
+    });
   }
 
   /**
@@ -42,12 +152,15 @@ export class TelegramService {
   }
 
   /**
-   * Gửi tin nhắn thực tế tới Telegram hoặc Mock
+   * Gửi tin nhắn thực tế tới Telegram kèm các nút bấm tương tác (Inline Keyboards)
    */
-  private async dispatchMessage(htmlMessage: string): Promise<boolean> {
+  private async dispatchMessage(htmlMessage: string, replyMarkup?: any): Promise<boolean> {
     if (this.bot && this.chatId) {
       try {
-        await this.bot.sendMessage(this.chatId, htmlMessage, { parse_mode: 'HTML' });
+        await this.bot.sendMessage(this.chatId, htmlMessage, {
+          parse_mode: 'HTML',
+          reply_markup: replyMarkup,
+        });
         return true;
       } catch (err: any) {
         console.error('[Telegram Service] Lỗi gửi tin nhắn Telegram:', err.message);
@@ -58,9 +171,10 @@ export class TelegramService {
   }
 
   /**
-   * 1. Thông báo khi khởi tạo mẻ gốm mới
+   * 1. Thông báo khi khởi tạo mẻ gốm mới (Kèm nút bấm xác nhận hoàn thành trạm 1)
    */
   async notifyBatchCreated(batch: {
+    id?: string;
     batchCode: string;
     productName: string;
     quantity: number;
@@ -92,10 +206,28 @@ export class TelegramService {
 • 🔥 <b>Nhiệt độ nung:</b> <code>${specs?.firing_specs?.target_temperature_c || 'N/A'}°C</code> (~${specs?.firing_specs?.estimated_duration_hours || '12'}h)
 • 📏 <b>Kích thước:</b> Cao ${specs?.dimensions?.height_cm || '30'}cm${customSpecsText}
 
-🚀 <i>Quy trình 6 công đoạn đã được kích hoạt tại trạm: <b>Tạo hình mộc</b></i>
+🚀 <i>Quy trình 6 công đoạn đã được kích hoạt tại trạm: <b>1. Tạo hình mộc</b></i>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 
-    await this.dispatchMessage(message);
+    // Nút bấm tương tác trên Telegram (gắn kèm expectedStage = TAO_HINH_MOC)
+    const replyMarkup = batch.id ? {
+      inline_keyboard: [
+        [
+          {
+            text: '✅ Xong "Tạo hình mộc" ➔ Sang "Phơi sấy"',
+            callback_data: `advance:${batch.id}:TAO_HINH_MOC`,
+          },
+        ],
+        [
+          {
+            text: '🚨 Báo Lỗi QC Nhanh',
+            callback_data: `qc_quick:${batch.id}`,
+          },
+        ],
+      ],
+    } : undefined;
+
+    await this.dispatchMessage(message, replyMarkup);
     await this.logEvent(
       'ORDER_CREATED',
       `Khởi tạo mẻ #${batch.batchCode}`,
@@ -105,9 +237,10 @@ export class TelegramService {
   }
 
   /**
-   * 2. Thông báo khi mẻ gốm chuyển sang công đoạn mới
+   * 2. Thông báo khi mẻ gốm chuyển sang công đoạn mới (Kèm nút bấm chuyển bước tiếp theo)
    */
   async notifyStageAdvanced(batch: {
+    id?: string;
     batchCode: string;
     productName: string;
     fromStage: string;
@@ -141,7 +274,32 @@ export class TelegramService {
 ⏰ <b>Thời gian cập nhật:</b> ${new Date().toLocaleString('vi-VN')}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 
-    await this.dispatchMessage(message);
+    // Tạo nút bấm cho trạm tiếp theo (gắn kèm expectedStage = batch.toStage)
+    let replyMarkup = undefined;
+    if (!batch.isCompleted && batch.id) {
+      const currentIndex = STAGES.indexOf(batch.toStage as StageNameType);
+      const nextStage = currentIndex < STAGES.length - 1 ? STAGES[currentIndex + 1] : null;
+      const nextStageName = nextStage ? (STAGE_DISPLAY_NAMES[nextStage as StageNameType] || nextStage) : 'Hoàn thành xuất xưởng';
+
+      replyMarkup = {
+        inline_keyboard: [
+          [
+            {
+              text: `✅ Xong "${toName}" ➔ Sang "${nextStageName}"`,
+              callback_data: `advance:${batch.id}:${batch.toStage}`,
+            },
+          ],
+          [
+            {
+              text: '🚨 Báo Lỗi QC Nhanh',
+              callback_data: `qc_quick:${batch.id}`,
+            },
+          ],
+        ],
+      };
+    }
+
+    await this.dispatchMessage(message, replyMarkup);
     await this.logEvent(
       batch.isCompleted ? 'BATCH_COMPLETED' : 'STAGE_ADVANCED',
       batch.isCompleted ? `Hoàn thành mẻ #${batch.batchCode}` : `Mẻ #${batch.batchCode} -> ${toName}`,
@@ -183,6 +341,49 @@ export class TelegramService {
       `🚨 Lỗi QC mẻ #${incident.batchCode}: ${incident.defectCount} sản phẩm`,
       message,
       { batchCode: incident.batchCode, defectCount: incident.defectCount, reason: incident.reason }
+    );
+  }
+
+  /**
+   * 4. Bắn thông báo khi chuyển lùi công đoạn (Rework & Rollback)
+   */
+  async notifyStageRollback(payload: {
+    id?: string;
+    batchCode: string;
+    productName: string;
+    fromStage: string;
+    toStage: string;
+    reason: string;
+  }) {
+    const fromName = STAGE_DISPLAY_NAMES[payload.fromStage as StageNameType] || payload.fromStage;
+    const toName = STAGE_DISPLAY_NAMES[payload.toStage as StageNameType] || payload.toStage;
+
+    const message = `
+⚠️ <b>[ĐIỀU PHỐI LẠI - TÁI CHẾ / SỬA PHÔI] MẺ GỐM #${payload.batchCode}</b>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🏺 <b>Sản phẩm:</b> ${payload.productName}
+📍 <b>Chuyển lùi từ:</b> <i>${fromName}</i> ➔ 🎯 <b>${toName}</b>
+📝 <b>Lý do yêu cầu sửa:</b> <i>"${payload.reason}"</i>
+⏰ <b>Thời điểm:</b> ${new Date().toLocaleString('vi-VN')}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+
+    const replyMarkup = payload.id ? {
+      inline_keyboard: [
+        [
+          {
+            text: `✅ Đã sửa xong "${toName}" ➔ Chuyển tiếp`,
+            callback_data: `advance:${payload.id}:${payload.toStage}`,
+          },
+        ],
+      ],
+    } : undefined;
+
+    await this.dispatchMessage(message, replyMarkup);
+    await this.logEvent(
+      'STAGE_ROLLBACK',
+      `⚠️ Mẻ #${payload.batchCode} chuyển lùi về ${toName}`,
+      message,
+      { batchCode: payload.batchCode, fromStage: payload.fromStage, toStage: payload.toStage, reason: payload.reason }
     );
   }
 }

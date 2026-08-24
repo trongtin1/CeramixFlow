@@ -50,15 +50,16 @@ class WorkflowService {
             }
             return createdBatch;
         });
-        // 3. Bắn thông báo Telegram
-        await telegram_service_1.telegramService.notifyBatchCreated({
+        // 3. Bắn thông báo Telegram bất đồng bộ (Non-blocking, phản hồi 0ms)
+        telegram_service_1.telegramService.notifyBatchCreated({
+            id: batch.id,
             batchCode: batch.batchCode,
             productName: batch.productName,
             quantity: batch.quantity,
             priority: batch.priority,
             deadlineDays: batch.deadlineDays,
             technicalSpecs: payload.technical_specs,
-        });
+        }).catch((e) => console.error('[Telegram BG Error]:', e.message));
         return this.getBatchById(batch.id);
     }
     /**
@@ -148,25 +149,11 @@ class WorkflowService {
                 incidents: true,
             },
         });
-        const PRIORITY_ORDER = {
-            URGENT: 1,
-            HIGH: 2,
-            MEDIUM: 3,
-            LOW: 4,
-        };
-        // Thuật toán điều phối đa tầng (Multi-tier Workshop Scheduling Engine):
-        // Tầng 1: Cấp độ ưu tiên (URGENT > HIGH > MEDIUM > LOW)
-        // Tầng 2: Thứ tự kéo thả thủ công của Quản đốc (custom_rank)
-        // Tầng 3 (Tie-breaker 1): Hạn giao hàng sớm hơn (Earliest Due Date - EDD: deadlineDays ít ngày hơn)
-        // Tầng 4 (Tie-breaker 2): Thời điểm vào xưởng (FIFO: First-In-First-Out, createdAt cũ hơn làm trước)
+        // Thuật toán sắp xếp thứ tự mẻ sản xuất:
+        // 1. Thứ tự kéo thả thủ công của Quản đốc (custom_rank)
+        // 2. Thời điểm vào xưởng (FIFO: First-In-First-Out, createdAt cũ hơn làm trước)
         const sortedBatches = batches.sort((a, b) => {
-            // 1. So sánh cấp độ ưu tiên
-            const priorityA = PRIORITY_ORDER[a.priority] || 99;
-            const priorityB = PRIORITY_ORDER[b.priority] || 99;
-            if (priorityA !== priorityB) {
-                return priorityA - priorityB;
-            }
-            // 2. Thứ tự kéo thả thủ công (custom_rank)
+            // 1. Thứ tự kéo thả thủ công (custom_rank)
             const specsA = JSON.parse(a.technicalSpecs || '{}');
             const specsB = JSON.parse(b.technicalSpecs || '{}');
             const rankA = typeof specsA.custom_rank === 'number' ? specsA.custom_rank : null;
@@ -180,13 +167,7 @@ class WorkflowService {
             else if (rankA === null && rankB !== null) {
                 return 1;
             }
-            // 3. Đồng cấp ưu tiên & chưa kéo thả -> So sánh Thời hạn giao hàng (EDD rule)
-            const deadlineA = a.deadlineDays !== null && a.deadlineDays !== undefined ? a.deadlineDays : 9999;
-            const deadlineB = b.deadlineDays !== null && b.deadlineDays !== undefined ? b.deadlineDays : 9999;
-            if (deadlineA !== deadlineB) {
-                return deadlineA - deadlineB;
-            }
-            // 4. Cùng thời hạn -> Áp dụng FIFO (Mẻ nào tạo trước/chờ lâu hơn thì làm trước)
+            // 2. Áp dụng FIFO
             return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
         });
         return sortedBatches.map((b) => ({
@@ -196,8 +177,9 @@ class WorkflowService {
     }
     /**
      * Chuyển công đoạn sang trạm kế tiếp (Workflow State Machine)
+     * Hỗ trợ expectedStage để kiểm soát xung đột đồng bộ giữa Web và Telegram
      */
-    async advanceStage(batchId) {
+    async advanceStage(batchId, expectedStage) {
         const batch = await prisma_1.default.batch.findUnique({
             where: { id: batchId },
             include: { stages: true },
@@ -206,7 +188,12 @@ class WorkflowService {
             throw new Error('Không tìm thấy mẻ sản xuất.');
         }
         if (batch.overallStatus === 'COMPLETED') {
-            throw new Error('Mẻ sản xuất này đã hoàn thành toàn bộ quy trình.');
+            throw new Error(`Mẻ #${batch.batchCode} đã hoàn thành toàn bộ 6 công đoạn xuất xưởng.`);
+        }
+        // Kiểm tra xung đột nếu thao tác từ nút bấm cũ
+        if (expectedStage && batch.currentStage !== expectedStage) {
+            const currentDisplayName = batchSchema_1.STAGE_DISPLAY_NAMES[batch.currentStage] || batch.currentStage;
+            throw new Error(`Mẻ #${batch.batchCode} hiện đã chuyển sang "${currentDisplayName}" trước đó rồi.`);
         }
         const currentStageIndex = batchSchema_1.STAGES.indexOf(batch.currentStage);
         if (currentStageIndex === -1) {
@@ -257,15 +244,86 @@ class WorkflowService {
                 });
             }
         });
-        // Bắn thông báo Telegram
-        await telegram_service_1.telegramService.notifyStageAdvanced({
+        // Bắn thông báo Telegram bất đồng bộ ngầm (Non-blocking, phản hồi tức thì < 15ms)
+        telegram_service_1.telegramService.notifyStageAdvanced({
+            id: batchId,
             batchCode: batch.batchCode,
             productName: batch.productName,
             fromStage: currentStageName,
             toStage: nextStageName,
             isCompleted: isLastStage,
             technicalSpecs: batch.technicalSpecs,
+        }).catch((e) => console.error('[Telegram BG Error]:', e.message));
+        return this.getBatchById(batchId);
+    }
+    /**
+     * Chuyển lùi công đoạn để sửa chữa / tái chế phôi mộc (Rework & Rollback Workflow)
+     */
+    async rollbackStage(batchId, payload) {
+        const batch = await prisma_1.default.batch.findUnique({
+            where: { id: batchId },
+            include: { stages: true },
         });
+        if (!batch) {
+            throw new Error('Không tìm thấy mẻ sản xuất.');
+        }
+        if (batch.overallStatus === 'COMPLETED') {
+            throw new Error('Mẻ sản xuất đã hoàn thành xuất xưởng, không thể chuyển lùi.');
+        }
+        const currentStageIndex = batchSchema_1.STAGES.indexOf(batch.currentStage);
+        const targetStageIndex = batchSchema_1.STAGES.indexOf(payload.target_stage);
+        if (targetStageIndex === -1 || targetStageIndex >= currentStageIndex) {
+            throw new Error('Công đoạn đích phải là một công đoạn trước công đoạn hiện tại.');
+        }
+        const currentStageName = batchSchema_1.STAGES[currentStageIndex];
+        const targetStageName = batchSchema_1.STAGES[targetStageIndex];
+        await prisma_1.default.$transaction(async (tx) => {
+            // 1. Kích hoạt lại stage đích: Chuyển sang IN_PROGRESS
+            await tx.batchStageLog.updateMany({
+                where: {
+                    batchId,
+                    stageName: targetStageName,
+                },
+                data: {
+                    status: 'IN_PROGRESS',
+                    startedAt: new Date(),
+                    completedAt: null,
+                    notes: `[Tiếp nhận sửa chữa từ ${batchSchema_1.STAGE_DISPLAY_NAMES[currentStageName] || currentStageName}]: ${payload.reason}`,
+                },
+            });
+            // 2. Reset tất cả các stage từ targetStageIndex + 1 trở đi về PENDING
+            const downstreamStages = batchSchema_1.STAGES.slice(targetStageIndex + 1);
+            for (const stg of downstreamStages) {
+                await tx.batchStageLog.updateMany({
+                    where: {
+                        batchId,
+                        stageName: stg,
+                    },
+                    data: {
+                        status: 'PENDING',
+                        completedAt: null,
+                        notes: stg === currentStageName ? `[Tái chế] Trả về trạm [${batchSchema_1.STAGE_DISPLAY_NAMES[targetStageName] || targetStageName}]. Lý do: ${payload.reason}` : null,
+                    },
+                });
+            }
+            // 3. Cập nhật trạng thái Batch
+            await tx.batch.update({
+                where: { id: batchId },
+                data: {
+                    currentStage: targetStageName,
+                    overallStatus: 'IN_PROGRESS',
+                },
+            });
+        });
+        // 4. Bắn thông báo Telegram bất đồng bộ (Non-blocking)
+        telegram_service_1.telegramService.notifyStageRollback({
+            id: batchId,
+            batchCode: batch.batchCode,
+            productName: batch.productName,
+            fromStage: currentStageName,
+            toStage: targetStageName,
+            reason: payload.reason,
+        }).catch((e) => console.error('[Telegram Rollback BG Error]:', e.message));
         return this.getBatchById(batchId);
     }
     /**
@@ -287,15 +345,15 @@ class WorkflowService {
                 severity: payload.severity,
             },
         });
-        // Bắn thông báo khẩn cấp Telegram
-        await telegram_service_1.telegramService.notifyQcIncident({
+        // Bắn thông báo khẩn cấp Telegram bất đồng bộ (Non-blocking)
+        telegram_service_1.telegramService.notifyQcIncident({
             batchCode: batch.batchCode,
             productName: batch.productName,
             stageName: batch.currentStage,
             defectCount: payload.defect_count,
             reason: payload.reason,
             severity: payload.severity,
-        });
+        }).catch((e) => console.error('[Telegram BG Error]:', e.message));
         return incident;
     }
     /**

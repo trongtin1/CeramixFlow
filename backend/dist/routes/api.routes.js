@@ -16,6 +16,7 @@ router.get('/batches/:id', order_controller_1.OrderController.getBatchById);
 router.put('/batches/:id', order_controller_1.OrderController.updateBatch);
 // 3. Workflow State Transition & Incidents
 router.patch('/batches/:id/advance', workflow_controller_1.WorkflowController.advanceStage);
+router.patch('/batches/:id/rollback', workflow_controller_1.WorkflowController.rollbackStage);
 router.post('/batches/:id/incidents', workflow_controller_1.WorkflowController.reportIncident);
 // 4. System & Live Feed
 router.get('/system/dashboard', system_controller_1.SystemController.getDashboardData);

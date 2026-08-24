@@ -186,46 +186,6 @@ export const EditBatchModal: React.FC<EditBatchModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit}>
-          {/* Priority Selection Cards */}
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '8px', fontWeight: 600 }}>
-              🎯 Độ Ưu Tiên Sản Xuất (Tự động đưa mẻ lên đầu hàng đợi quy trình):
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
-              {[
-                { id: 'URGENT', label: '🔥 KHẨN CẤP', desc: 'Ưu tiên #1 cao nhất', border: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' },
-                { id: 'HIGH', label: '⚡ ƯU TIÊN CAO', desc: 'Ưu tiên #2 xử lý sớm', border: '#f97316', bg: 'rgba(249, 115, 22, 0.15)' },
-                { id: 'MEDIUM', label: '📌 TIÊU CHUẨN', desc: 'Ưu tiên #3 thứ tự thường', border: '#3b82f6', bg: 'rgba(59, 130, 246, 0.15)' },
-                { id: 'LOW', label: '🌿 BÌNH THƯỜNG', desc: 'Ưu tiên #4 linh hoạt', border: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
-              ].map((p) => {
-                const isSelected = priority === p.id;
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => setPriority(p.id as Priority)}
-                    style={{
-                      border: isSelected ? `2px solid ${p.border}` : '1px solid rgba(255,255,255,0.1)',
-                      background: isSelected ? p.bg : 'rgba(0,0,0,0.25)',
-                      borderRadius: '8px',
-                      padding: '10px',
-                      cursor: 'pointer',
-                      textAlign: 'center',
-                      transition: 'all 0.2s ease',
-                      boxShadow: isSelected ? `0 0 12px ${p.border}40` : 'none',
-                    }}
-                  >
-                    <div style={{ fontSize: '13px', fontWeight: 700, color: isSelected ? '#fff' : 'var(--text-secondary)' }}>
-                      {p.label}
-                    </div>
-                    <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                      {p.desc}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
           {/* Basic Info */}
           <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr 0.8fr', gap: '12px', marginBottom: '20px' }}>
             <div>

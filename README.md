@@ -123,20 +123,18 @@ flowchart TD
 1. **Bộ Đôi Nút AI Thông Minh (Dual AI Action Hub):**
    - ⚡ **`✨ Bóc Tách Nhanh (1-Click)`**: Bóc tách tự động đoạn mô tả và mở modal kiểm duyệt thông số ngay lập tức.
    - 💬 **`🤖 Chat Tư Vấn Kỹ Sư AI (RAG)`**: Mở khung chat đối thoại với Kỹ sư trưởng AI để hỏi đáp và bổ sung các thông số kỹ thuật còn thiếu.
-2. **Thuật Toán Điều Phối Đa Tầng (Multi-Tier Scheduling Engine):**
-   - Sắp xếp thứ tự ưu tiên xử lý trong từng trạm theo công thức 4 lớp:
-   ```
-   1️⃣ Cấp độ ưu tiên (URGENT > HIGH > MEDIUM > LOW)
-      ➔ 2️⃣ Thứ tự kéo thả thủ công (custom_rank)
-         ➔ 3️⃣ Hạn giao sớm nhất (EDD - Earliest Due Date)
-            ➔ 4️⃣ Đến trước xử lý trước (FIFO)
-   ```
-3. **Kéo & Thả Thông Minh (HTML5 Drag-and-Drop):**
-   - Kéo thẻ lên/xuống trong cùng cột để đổi vị trí ưu tiên `#1`, `#2`, `#3`...
-   - Kéo thẻ sang cột tiếp theo để chuyển công đoạn sản xuất tức thì.
-4. **Phản Hồi Giao Diện Tức Thì 0ms (Optimistic UI):**
-   - Thao tác chuyển trạm, đổi ưu tiên, báo QC và cập nhật thông số phản hồi trên giao diện ngay trong 0ms không phụ thuộc vào độ trễ mạng hay Telegram API.
-5. **Cảnh Báo Đỏ Sự Cố QC Qua Telegram:**
+2. **Điều Phối Kéo Thả Tự Do (Free Drag-and-Drop & FIFO Scheduling):**
+   - Không bị gò bó bởi quy tắc cấp độ cứng nhắc: Quản đốc xưởng có toàn quyền sắp xếp thứ tự xử lý trong từng trạm (`custom_rank`) và theo thứ tự tạo mẻ tự nhiên (FIFO).
+3. **Quy Trình Tái Chế & Điều Phối Lùi (Rework & Stage Rollback Modal ⭐):**
+   - Khi phát hiện phôi mộc hoặc men có lỗi ở các công đoạn chưa nung (Trạm 1 - 4), người điều phối có thể **kéo lùi thẻ về trạm trước**.
+   - Hệ thống tự động bật **Modal Xác Nhận Chuyển Lùi** với các lý do nghiệp vụ (Men bọt khí, Phôi chưa phẳng, Họa tiết nhòe nét), reset trạng thái các trạm sau về `PENDING`, ghi nhận vết kiểm toán (Audit Trail) và bắn thông báo điều phối lại tới Telegram!
+4. **Xác Nhận 2 Chiều Trực Tiếp Trên Telegram & Chống Xung Đột (Dual-Channel Anti-Conflict Guard ⭐):**
+   - Thợ xưởng có thể xác nhận hoàn thành công đoạn bằng cách bấm nút `[ ✅ Xong "Trạm X" ➔ Sang "Trạm Y" ]` ngay trên điện thoại hoặc Quản đốc thao tác trên Web.
+   - Cơ chế kiểm soát phiên bản công đoạn (`expectedStage`) loại bỏ hoàn toàn nguy cơ xung đột thao tác đồng thời giữa 2 kênh.
+5. **Phản Hồi Siêu Tốc 0ms & Non-Blocking Background Dispatch:**
+   - Thao tác chuyển trạm, đổi vị trí, báo QC và cập nhật thông số phản hồi trên giao diện ngay trong 0ms (Optimistic UI).
+   - Tiến trình gửi tin Telegram được xử lý bất đồng bộ ngầm (`non-blocking background task`), giảm độ trễ API xuống dưới 15ms.
+6. **Cảnh Báo Đỏ Sự Cố QC Qua Telegram:**
    - Khi phát hiện hàng lỗi/nứt men, hệ thống lập tức phát bản tin cảnh báo khẩn cấp tới nhóm Telegram để quản lý xưởng xử lý kịp thời.
 
 ---
@@ -145,7 +143,7 @@ flowchart TD
 
 Khi xưởng có hàng chục đến hàng trăm mẻ gốm, CeramixFlow hỗ trợ:
 1. **Thanh Tìm Kiếm Đa Chiều (Deep Full-Text Search):** Tìm tức thì theo mã mẻ (`#CF-801`), tên sản phẩm, loại men (`Celadon`, `Men lam`), nhiệt độ (`1280°C`), kỹ thuật (`Bọc đồng`)...
-2. **Chip Lọc Cấp Độ Ưu Tiên (Priority Filter Chips):** 1-click lọc nhanh các mẻ `Tất cả` | `🔥 Khẩn cấp` | `⚡ Cao` | `📌 Tiêu chuẩn` | `🌿 Bình thường`.
+2. **Gợi Ý Tìm Nhanh (Quick Search Chips):** 1-click tìm nhanh theo các đặc tính phổ biến: `Bình sen`, `Celadon`, `Men rạn`, `1280°C`, `1300°C`, `Bọc đồng`, `Xuất khẩu`.
 3. **Chế Độ Thu Gọn (Compact View Toggle):** Thu nhỏ thẻ mẻ gốm xuống dày $\approx 45\text{px}$, hiển thị gấp 3-4 lần số lượng mẻ trên 1 màn hình.
 4. **Cuộn Độc Lập Từng Cột (Independent Column Scrolling):** Cố định tiêu đề từng trạm với thanh cuộn riêng biệt, không làm vỡ bố cục trang.
 
@@ -201,14 +199,16 @@ npm run dev
 
 ---
 
-## 📹 Kịch Bản Video Demo 2 - 3 Phút
+## 📹 Kịch Bản Video Demo 2 - 3 Phút (Presentation Script)
 
 | Thời Lượng | Nội Dung Trình Diễn | Điểm Nhấn Thuyết Minh |
 | :--- | :--- | :--- |
-| **0:00 - 0:45** | **Tiếp nhận & Chat AI RAG:**<br>• Mở **Chat Tư Vấn Kỹ Sư AI**, gõ: *"Làm 150 bình hút lộc men ngọc"*.<br>• Cho thấy AI phát hiện thiếu thông số và hỏi tiếp về chiều cao, thời hạn và **thông số kỹ thuật chuyên sâu**.<br>• Chọn chip `[+ Bọc đồng viền miệng]`, `[+ Tỷ lệ co ngót 12.5%]` $\rightarrow$ Bấm *Kích hoạt mẻ*. | AI Copilot am hiểu chuyên môn gốm sứ, tự động ước tính khối lượng đất sét và nhiệt độ lò chuẩn xác. |
-| **0:45 - 1:30** | **Điều phối Kanban 6 bước & Kéo thả (Drag & Drop):**<br>• Kéo thẻ từ `#3` lên `#1` trong cột $\rightarrow$ Thay đổi thứ tự ưu tiên 0ms.<br>• Kéo thẻ sang cột tiếp theo để chuyển trạm $\rightarrow$ Quan sát Live Telegram Feed nhận thông báo tức thì. | Kiến trúc State Machine 6 trạm, Optimistic UI và Multi-tier scheduling. |
-| **1:30 - 2:15** | **Báo Cáo Sự Cố QC & Cảnh Báo Đỏ:**<br>• Bấm *🚨 Báo QC* trên mẻ đang nung $\rightarrow$ Nhập *"5 sản phẩm nứt men"*.<br>• Quan sát thông báo đỏ khẩn cấp bắn về Telegram Bot. | Xử lý ngoại lệ thực tế trong dây chuyền sản xuất. |
-| **2:15 - 3:00** | **Bộ Công Cụ Dữ Liệu Lớn & Tổng Kết:**<br>• Bật chế độ *📑 Thu Gọn*, thử tìm kiếm `Celadon` hoặc bấm chip `🔥 Khẩn cấp`.<br>• Mở modal xem thông số JSONB. | Khẳng định tính linh hoạt của kiến trúc PostgreSQL JSONB và giao diện hiệu năng cao. |
+| **0:00 - 0:35** | **Tiếp nhận & Chat AI RAG:**<br>• Mở **Chat Tư Vấn Kỹ Sư AI**, gõ: *"Tôi muốn đặt làm 150 bình hút tài lộc phong thủy"*.<br>• AI phát hiện thiếu thông số $\rightarrow$ Click chọn các chip gợi ý: `+ Chiều cao 35cm`, `+ Men ngọc Celadon`, `+ Hạn 7 ngày`, `+ Bọc đồng viền miệng` $\rightarrow$ Bấm *Kích hoạt mẻ*. | AI Copilot am hiểu chuyên môn gốm sứ, tự động ước tính khối lượng đất sét và nhiệt độ lò chuẩn xác. |
+| **0:36 - 0:55** | **Pre-flight Review & Khởi Tạo:**<br>• Modal **Kiểm duyệt thông số** mở ra $\rightarrow$ Xem định mức đất sét (130kg), nhiệt độ lò (1260°C).<br>• Bấm **Xác Nhận & Khởi Tạo Mẻ Sản Xuất**. | Quản đốc kiểm duyệt thông số trước khi đưa vào dây chuyền sản xuất chính thức. |
+| **0:56 - 1:20** | **Điều phối Kanban 6 bước & Chuyển Tiến Công Đoạn:**<br>• Kéo thẻ tự do trong cột để đổi vị trí ưu tiên `#1`, `#2`.<br>• Bấm nút **`➔ Bước 2, 3, 4`** hoặc kéo sang cột tiếp theo $\rightarrow$ Phản hồi tức thì 0ms và phát tín hiệu Telegram. | Kiến trúc State Machine 6 trạm, Optimistic UI và xác nhận 2 chiều Web $\leftrightarrow$ Telegram. |
+| **1:21 - 1:50** | **Quy Trình Tái Chế / Sửa Chữa Phôi Mộc (Rework):**<br>• Kéo thẻ từ Trạm 3 (Vẽ họa tiết) lùi về Trạm 2 (Phơi sấy & Sửa mộc).<br>• Modal xác nhận mở ra $\rightarrow$ Chọn lý do: *"Phôi mộc chưa phẳng / Men bị bọt khí"* $\rightarrow$ Bấm *Xác nhận*. | Xử lý linh hoạt bài toán thực tế của xưởng gốm khi cần sửa phôi mộc trước nung. |
+| **1:51 - 2:20** | **Báo Cáo Sự Cố QC & Cảnh Báo Đỏ:**<br>• Bấm *🚨 Báo QC* trên mẻ đang nung $\rightarrow$ Nhập *"5 sản phẩm nứt men"*.<br>• Quan sát thông báo đỏ khẩn cấp bắn về Telegram Bot. | Ghi nhận phế phẩm và phát cảnh báo đỏ khẩn cấp để xử lý bù mẻ kịp thời. |
+| **2:21 - 2:50** | **Bộ Công Cụ Mật Độ Cao & Tổng Kết:**<br>• Thử tìm kiếm `Celadon` hoặc bấm gợi ý `1280°C`.<br>• Bật chế độ *📑 Thu Gọn* $\rightarrow$ Mở xem chi tiết `technical_specs` JSONB. | Khẳng định tính ưu việt của kiến trúc Hybrid JSONB và giao diện hiệu năng cao. |
 
 ---
 

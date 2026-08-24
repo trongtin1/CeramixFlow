@@ -7,6 +7,7 @@ import { QcIncidentModal } from './components/QcIncidentModal';
 import { BatchDetailModal } from './components/BatchDetailModal';
 import { EditBatchModal } from './components/EditBatchModal';
 import { RagChatModal } from './components/RagChatModal';
+import { RollbackModal } from './components/RollbackModal';
 import { LiveTelegramFeed } from './components/LiveTelegramFeed';
 import {
   parseOrderWithAi,
@@ -15,6 +16,7 @@ import {
   updateBatch,
   reorderBatches,
   advanceBatchStage,
+  rollbackBatchStage,
   reportQcIncident,
   getDashboardData,
   resetDemoData,
@@ -100,6 +102,7 @@ export const App: React.FC = () => {
   const [isAdvancingId, setIsAdvancingId] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const inFlightCountRef = React.useRef(0);
 
   // Modals
   const [selectedQcBatch, setSelectedQcBatch] = useState<Batch | null>(null);
@@ -109,6 +112,10 @@ export const App: React.FC = () => {
 
   const [selectedEditBatch, setSelectedEditBatch] = useState<Batch | null>(null);
   const [isUpdatingBatch, setIsUpdatingBatch] = useState(false);
+
+  const [selectedRollbackBatch, setSelectedRollbackBatch] = useState<Batch | null>(null);
+  const [rollbackTargetStage, setRollbackTargetStage] = useState<StageNameType | null>(null);
+  const [isRollingBack, setIsRollingBack] = useState(false);
 
   // High-performance Toast Queue
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
@@ -132,7 +139,13 @@ export const App: React.FC = () => {
   };
 
   // Lock background body scroll when any modal is open
-  const isAnyModalOpen = isAiModalOpen || isRagChatOpen || !!selectedQcBatch || !!selectedDetailBatch || !!selectedEditBatch;
+  const isAnyModalOpen =
+    isAiModalOpen ||
+    isRagChatOpen ||
+    !!selectedQcBatch ||
+    !!selectedDetailBatch ||
+    !!selectedEditBatch ||
+    !!selectedRollbackBatch;
   useEffect(() => {
     if (isAnyModalOpen) {
       document.body.style.overflow = 'hidden';
@@ -145,7 +158,10 @@ export const App: React.FC = () => {
   }, [isAnyModalOpen]);
 
   // Load data function
-  const fetchData = async (showInitialShimmer = false) => {
+  const fetchData = async (showInitialShimmer = false, isSilentBgSync = false) => {
+    // 🛡️ Chặn polling ngầm nếu đang có thao tác chuyển trạm / lùi trạm in-flight để không làm nhảy ngược giao diện
+    if (isSilentBgSync && inFlightCountRef.current > 0) return;
+
     if (showInitialShimmer) setIsInitialLoading(true);
     try {
       const [batchesData, dashData] = await Promise.all([
@@ -263,8 +279,12 @@ export const App: React.FC = () => {
     }
 
     setIsAdvancingId(batchId);
+    inFlightCountRef.current++;
     try {
-      await advanceBatchStage(batchId);
+      const updated = await advanceBatchStage(batchId);
+      setBatches((prevBatches) =>
+        prevBatches.map((b) => (b.id === batchId ? updated : b))
+      );
       // Đồng bộ ngầm lại dữ liệu và audit log
       const dashData = await getDashboardData();
       setStats(dashData.stats);
@@ -274,6 +294,7 @@ export const App: React.FC = () => {
       await fetchData();
     } finally {
       setIsAdvancingId(null);
+      inFlightCountRef.current--;
     }
   };
 
@@ -287,6 +308,7 @@ export const App: React.FC = () => {
     showToast(`🚨 Đã ghi nhận ${data.defect_count} sản phẩm lỗi ở mẻ #${targetBatch?.batchCode || ''} & phát cảnh báo đỏ Telegram!`, 'error', 'Cảnh báo QC');
 
     setIsQcSubmitting(true);
+    inFlightCountRef.current++;
     try {
       await reportQcIncident(batchId, data);
       await fetchData();
@@ -295,6 +317,7 @@ export const App: React.FC = () => {
       await fetchData();
     } finally {
       setIsQcSubmitting(false);
+      inFlightCountRef.current--;
     }
   };
 
@@ -332,6 +355,7 @@ export const App: React.FC = () => {
     showToast(`✅ Đã lưu thông số & sắp xếp lại thứ tự ưu tiên mẻ #${targetBatch?.batchCode || ''}!`, 'success', 'Cập nhật thành công');
 
     setIsUpdatingBatch(true);
+    inFlightCountRef.current++;
     try {
       await updateBatch(batchId, updatedData);
       const dashData = await getDashboardData();
@@ -341,6 +365,53 @@ export const App: React.FC = () => {
       await fetchData();
     } finally {
       setIsUpdatingBatch(false);
+      inFlightCountRef.current--;
+    }
+  };
+
+  // 6. Rollback Stage (Rework / Tái chế phôi mộc - Optimistic 0ms Update)
+  const handleRollbackStage = async (batchId: string, targetStage: string, reason: string) => {
+    const targetBatch = batches.find((b) => b.id === batchId);
+    if (!targetBatch) return;
+
+    setSelectedRollbackBatch(null);
+
+    // ⚡ Optimistic UI Update 0ms: Chuyển thẻ lùi về cột đích ngay lập tức
+    setBatches((prevBatches) =>
+      prevBatches.map((b) => {
+        if (b.id === batchId) {
+          return {
+            ...b,
+            currentStage: targetStage as StageNameType,
+            overallStatus: 'IN_PROGRESS',
+          };
+        }
+        return b;
+      })
+    );
+
+    showToast(
+      `🔄 Đã chuyển lùi mẻ #${targetBatch.batchCode} về [${STAGE_TITLES[targetStage]}] để sửa chữa!`,
+      'warning',
+      'Điều phối lại / Rework'
+    );
+
+    setIsRollingBack(true);
+    inFlightCountRef.current++;
+    try {
+      const updated = await rollbackBatchStage(batchId, { target_stage: targetStage, reason });
+      setBatches((prevBatches) =>
+        prevBatches.map((b) => (b.id === batchId ? updated : b))
+      );
+      const dashData = await getDashboardData();
+      setStats(dashData.stats);
+      setLogs(dashData.recentLogs);
+    } catch (err: any) {
+      showToast(err.message || 'Lỗi chuyển lùi công đoạn', 'error');
+      await fetchData();
+    } finally {
+      setIsRollingBack(false);
+      inFlightCountRef.current--;
     }
   };
 
@@ -500,6 +571,10 @@ export const App: React.FC = () => {
       <KanbanBoard
         batches={batches}
         onAdvanceStage={handleAdvanceStage}
+        onOpenRollbackModal={(batch, targetStage) => {
+          setSelectedRollbackBatch(batch);
+          setRollbackTargetStage(targetStage || null);
+        }}
         onOpenQcModal={(batch) => setSelectedQcBatch(batch)}
         onOpenDetailModal={(batch) => setSelectedDetailBatch(batch)}
         onOpenEditModal={(batch) => setSelectedEditBatch(batch)}
@@ -565,6 +640,16 @@ export const App: React.FC = () => {
           setCurrentPrompt(rawPrompt || data.product_name);
           setIsAiModalOpen(true);
         }}
+      />
+
+      {/* Rollback & Rework Modal */}
+      <RollbackModal
+        isOpen={!!selectedRollbackBatch}
+        batch={selectedRollbackBatch}
+        initialTargetStage={rollbackTargetStage}
+        onClose={() => setSelectedRollbackBatch(null)}
+        onSubmit={handleRollbackStage}
+        isSubmitting={isRollingBack}
       />
 
       <QcIncidentModal

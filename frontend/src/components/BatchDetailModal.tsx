@@ -77,9 +77,9 @@ export const BatchDetailModal: React.FC<BatchDetailModalProps> = ({ batch, isOpe
           }}
         >
           <div className="glass-panel" style={{ padding: '12px', background: '#0f172a' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Số lượng & Ưu tiên</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Số lượng sản xuất</span>
             <div style={{ fontSize: '14px', fontWeight: 700, marginTop: '4px' }}>
-              {batch.quantity} chiếc ({batch.priority})
+              {batch.quantity} chiếc
             </div>
           </div>
 
